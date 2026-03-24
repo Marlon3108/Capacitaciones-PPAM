@@ -1,0 +1,234 @@
+import { useState } from 'react'
+import { read, utils } from 'xlsx'
+import { UploadCloud, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { supabase } from '../supabaseClient'
+
+export default function ImportadorSheets() {
+  const [datosBrutos, setDatosBrutos] = useState([])
+  const [encabezados, setEncabezados] = useState([])
+  const [archivo, setArchivo] = useState(null)
+  
+  const [columnaNombre, setColumnaNombre] = useState('')
+  const [columnaCiudad, setColumnaCiudad] = useState('')
+  const [columnaCongregacion, setColumnaCongregacion] = useState('') // NUEVO CAMPO
+  
+  const [cargando, setCargando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const procesarArchivo = async (file) => {
+    if (!file) return
+    setArchivo(file.name)
+    setMensaje(null)
+
+    const data = await file.arrayBuffer()
+    const workbook = read(data)
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    const jsonData = utils.sheet_to_json(worksheet, { header: 1 })
+    
+    if (jsonData.length > 1) {
+      setEncabezados(jsonData[0])
+      setDatosBrutos(jsonData.slice(1))
+    }
+  }
+
+  const handleFileUpload = (e) => procesarArchivo(e.target.files[0])
+  const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true) }
+  const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false) }
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) procesarArchivo(e.dataTransfer.files[0])
+  }
+
+  const generarCodigoUnico = () => {
+    const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let codigo = ''
+    for (let i = 0; i < 6; i++) codigo += caracteres.charAt(Math.floor(Math.random() * caracteres.length))
+    return codigo
+  }
+
+  // LÓGICA INTELIGENTE ANTI-DUPLICADOS
+  const handleImportar = async () => {
+    if (!columnaNombre || !columnaCiudad || !columnaCongregacion) {
+      setMensaje({ tipo: 'error', texto: 'Por favor, selecciona las columnas de Nombre, Ciudad y Congregación.' })
+      return
+    }
+
+    setCargando(true)
+    setMensaje(null)
+
+    const indiceNombre = encabezados.indexOf(columnaNombre)
+    const indiceCiudad = encabezados.indexOf(columnaCiudad)
+    const indiceCongregacion = encabezados.indexOf(columnaCongregacion)
+
+    try {
+      // 1. Traer los participantes que YA existen en Supabase
+      const { data: existentes, error: errorFetch } = await supabase
+        .from('participantes')
+        .select('id, nombres_apellidos, ciudad, congregacion, codigo_unico, estado')
+
+      if (errorFetch) throw errorFetch
+
+      const nuevosAInsertar = []
+      const existentesAActualizar = []
+
+      // 2. Comparar el Excel con la Base de Datos
+      datosBrutos.forEach(fila => {
+        const nombreExcel = fila[indiceNombre] ? fila[indiceNombre].toString().trim() : ''
+        if (!nombreExcel) return // Ignorar filas vacías
+
+        const ciudadExcel = fila[indiceCiudad] ? fila[indiceCiudad].toString().trim() : 'No especificada'
+        const congregacionExcel = fila[indiceCongregacion] ? fila[indiceCongregacion].toString().trim() : 'No especificada'
+
+        // Buscar si ya existe alguien con ese mismo nombre exacto
+        const pExistente = existentes.find(p => p.nombres_apellidos.toLowerCase() === nombreExcel.toLowerCase())
+
+        if (pExistente) {
+          // Si existe, verificamos si le cambiaron la ciudad o congregación en el nuevo Excel
+          if (pExistente.ciudad !== ciudadExcel || pExistente.congregacion !== congregacionExcel) {
+            existentesAActualizar.push({
+              id: pExistente.id,
+              nombres_apellidos: pExistente.nombres_apellidos, 
+              ciudad: ciudadExcel,
+              congregacion: congregacionExcel,
+              codigo_unico: pExistente.codigo_unico, // Mantenemos su código original
+              estado: pExistente.estado // Mantenemos su estado original
+            })
+          }
+        } else {
+          // Es alguien totalmente nuevo
+          nuevosAInsertar.push({
+            codigo_unico: generarCodigoUnico(),
+            nombres_apellidos: nombreExcel,
+            ciudad: ciudadExcel,
+            congregacion: congregacionExcel,
+            estado: 'pendiente'
+          })
+        }
+      })
+
+      // 3. Ejecutar las operaciones en la base de datos
+      if (nuevosAInsertar.length > 0) {
+        const { error: errIn } = await supabase.from('participantes').insert(nuevosAInsertar)
+        if (errIn) throw errIn
+      }
+
+      if (existentesAActualizar.length > 0) {
+        // Upsert actualiza usando el ID que le pasamos
+        const { error: errUp } = await supabase.from('participantes').upsert(existentesAActualizar)
+        if (errUp) throw errUp
+      }
+
+      setMensaje({ 
+        tipo: 'exito', 
+        texto: `Proceso completado: Se agregaron ${nuevosAInsertar.length} nuevos y se actualizaron los datos de ${existentesAActualizar.length} existentes.` 
+      })
+      
+      setTimeout(() => {
+        setArchivo(null)
+        setEncabezados([])
+        setDatosBrutos([])
+        setColumnaNombre(''); setColumnaCiudad(''); setColumnaCongregacion('')
+      }, 5000)
+
+    } catch (error) {
+      console.error(error)
+      setMensaje({ tipo: 'error', texto: 'Error de base de datos: ' + error.message })
+    }
+    
+    setCargando(false)
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Paso 1: Cargar Participantes</h2>
+        <p className="text-gray-500 mb-6 text-sm">
+          El sistema es inteligente: Si el participante ya existe, <strong>no lo duplicará</strong>, solo actualizará su ciudad o congregación si detecta cambios. Si es nuevo, le generará un código.
+        </p>
+
+        <div className="flex items-center justify-center w-full">
+          <label 
+            onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+            className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+              isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
+              <UploadCloud className={`w-12 h-12 mb-3 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
+              <p className="mb-2 text-sm text-gray-500">
+                {isDragging ? <span className="font-semibold text-blue-600">¡Suelta el archivo aquí!</span> : <><span className="font-semibold">Haz clic para subir</span> o arrastra el archivo Excel/CSV</>}
+              </p>
+            </div>
+            <input type="file" className="hidden" accept=".xlsx, .csv" onChange={handleFileUpload}/>
+          </label>
+        </div>
+
+        {archivo && (
+          <div className="mt-4 p-4 bg-green-50 border border-green-100 rounded-lg flex items-center text-green-700">
+            <CheckCircle2 className="w-5 h-5 mr-2" />
+            Archivo cargado: <span className="font-medium ml-1">{archivo}</span>
+            <span className="ml-auto text-sm font-medium">({datosBrutos.length} filas detectadas)</span>
+          </div>
+        )}
+      </div>
+
+      {encabezados.length > 0 && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Paso 2: Emparejar Columnas</h2>
+          <div className="space-y-4 max-w-2xl mb-6">
+            
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+              <div className="w-1/3"><span className="font-medium text-gray-700 text-sm">Nombres y Apellidos <span className="text-red-500">*</span></span></div>
+              <div className="w-10 flex justify-center text-gray-400"><LinkIcon size={16}/></div>
+              <div className="w-1/2">
+                <select value={columnaNombre} onChange={(e) => setColumnaNombre(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-sm bg-white outline-none">
+                  <option value="">-- Selecciona --</option>
+                  {encabezados.map(enc => <option key={enc} value={enc}>{enc}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+              <div className="w-1/3"><span className="font-medium text-gray-700 text-sm">Ciudad asignada <span className="text-red-500">*</span></span></div>
+              <div className="w-10 flex justify-center text-gray-400"><LinkIcon size={16}/></div>
+              <div className="w-1/2">
+                <select value={columnaCiudad} onChange={(e) => setColumnaCiudad(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-sm bg-white outline-none">
+                  <option value="">-- Selecciona --</option>
+                  {encabezados.map(enc => <option key={enc} value={enc}>{enc}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+              <div className="w-1/3"><span className="font-medium text-gray-700 text-sm">Congregación <span className="text-red-500">*</span></span></div>
+              <div className="w-10 flex justify-center text-gray-400"><LinkIcon size={16}/></div>
+              <div className="w-1/2">
+                <select value={columnaCongregacion} onChange={(e) => setColumnaCongregacion(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-sm bg-white outline-none">
+                  <option value="">-- Selecciona --</option>
+                  {encabezados.map(enc => <option key={enc} value={enc}>{enc}</option>)}
+                </select>
+              </div>
+            </div>
+
+          </div>
+
+          {mensaje && (
+            <div className={`p-4 mb-4 rounded-lg flex items-center text-sm ${mensaje.tipo === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+              {mensaje.tipo === 'error' ? <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0"/> : <CheckCircle2 className="w-5 h-5 mr-2 flex-shrink-0"/>}
+              {mensaje.texto}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button onClick={handleImportar} disabled={cargando} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center disabled:opacity-50">
+              {cargando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : null}
+              {cargando ? 'Procesando archivo...' : 'Procesar y Sincronizar Participantes'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

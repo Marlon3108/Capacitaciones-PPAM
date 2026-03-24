@@ -1,0 +1,307 @@
+import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { supabase } from '../supabaseClient'
+import { Save, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import BuscadorSelect from './BuscadorSelect'
+
+const PUNTOS_METROPOLITANA = [
+  { value: 'Cali- AVIANCA', label: 'Cali- AVIANCA (Alexander Castro)' },
+  { value: 'Cali- BUITRERA', label: 'Cali- BUITRERA (Marlon Cano/ Andrés Abadía)' },
+  { value: 'Cali- CANCHAS PANAMERICANAS', label: 'Cali- CANCHAS PANAMERICANAS (Daniel Torres/ Orlando)' },
+  { value: 'Cali- CARRERA OCTAVA', label: 'Cali- CARRERA OCTAVA (Jeisson Gómez)' },
+  { value: 'Cali- CAM', label: 'Cali- CAM (Alexander Castro)' },
+  { value: 'Cali- GOBERNACIÓN DEL VALLE', label: 'Cali- GOBERNACIÓN DEL VALLE (Jose Luis Castillo)' },
+  { value: 'Cali- IMBANACO', label: 'Cali- IMBANACO (Daniel Torres/ Orlando)' },
+  { value: 'Cali- LA 14 CALIMA', label: 'Cali- LA 14 CALIMA (José Eduardo Ortega)' },
+  { value: 'Cali- PLAZA CAYZEDO', label: 'Cali- PLAZA CAYZEDO (Jose Luis Castillo)' },
+  { value: 'Jamundí', label: 'Jamundí (Edgar Pérez/ John Armijo)' },
+  { value: 'Palmira- BOLIVAR', label: 'Palmira- BOLIVAR (Juan David Moncada)' },
+  { value: 'Palmira- LA FACTORÍA', label: 'Palmira- LA FACTORÍA (Juan David Moncada)' },
+  { value: 'Yumbo', label: 'Yumbo (Sebastián Redondo/ Juan Esteban)' }
+]
+
+export default function FormularioLCCS() {
+  const [opcionesParticipantes, setOpcionesParticipantes] = useState([])
+  const [opcionesCapacitadores, setOpcionesCapacitadores] = useState([])
+  const [enviando, setEnviando] = useState(false)
+  
+  const [modalExito, setModalExito] = useState(false)
+  const [errorSuperior, setErrorSuperior] = useState(null)
+
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm()
+  
+  const capacitadorId = watch('capacitador_id')
+  const participanteId = watch('participante')
+  const puntoMetropolitana = watch('punto')
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data: partData } = await supabase.from('participantes').select('id, nombres_apellidos, codigo_unico').eq('estado', 'pendiente')
+      if (partData) {
+        setOpcionesParticipantes(partData.map(p => ({ value: p.id, label: `${p.nombres_apellidos} (Cód: ${p.codigo_unico})` })))
+      }
+
+      const { data: capData } = await supabase.from('usuarios').select('id, nombre_completo')
+      if (capData) {
+        setOpcionesCapacitadores(capData.map(c => ({ value: c.id, label: c.nombre_completo })))
+      }
+    }
+    fetchData()
+  }, [modalExito])
+
+  const onSubmit = async (data) => {
+    if (!data.capacitador_id || !data.participante || !data.punto) return
+
+    setEnviando(true)
+    setErrorSuperior(null)
+    
+    const evaluacion = {
+      participante_id: data.participante,
+      capacitador_id: data.capacitador_id,
+      punto_metropolitana: data.punto,
+      tipo_capacitacion: data.tipoCapacitacion,
+      fecha_capacitacion: data.fecha,
+      resultado_aprobacion: data.resultadoAprobacion,
+      observaciones_finales: data.observaciones,
+      respuestas: data 
+    }
+
+    try {
+      const { error: errorEval } = await supabase.from('evaluaciones_lccs').insert([evaluacion])
+      if (errorEval) throw errorEval
+
+      const { error: errorPart } = await supabase.from('participantes')
+        .update({ estado: data.resultadoAprobacion || 'evaluado' })
+        .eq('id', data.participante)
+      if (errorPart) throw errorPart
+
+      setModalExito(true)
+      
+    } catch (error) {
+      setErrorSuperior(error.message)
+      window.scrollTo(0, 0)
+    }
+    setEnviando(false)
+  }
+
+  const reiniciarFormulario = () => {
+    setModalExito(false)
+    reset()
+    setValue('capacitador_id', null)
+    setValue('participante', null)
+    setValue('punto', null)
+    window.scrollTo(0, 0)
+  }
+
+  const CheckboxItem = ({ name, label }) => (
+    <label className="flex items-start cursor-pointer group mb-2">
+      <div className="mt-1">
+        <input type="checkbox" {...register(name)} className="w-5 h-5 text-blue-600 bg-blue-100 border-gray-400 rounded-sm focus:ring-blue-500 cursor-pointer" />
+      </div>
+      <span className="ml-3 text-sm text-gray-800 group-hover:text-black">{label}</span>
+    </label>
+  )
+
+  const RadioItem = ({ name, value, label }) => (
+    <label className="flex items-start cursor-pointer group mb-2">
+      <div className="mt-1">
+        <input type="radio" value={value} {...register(name)} className="w-5 h-5 text-blue-600 bg-blue-100 border-gray-400 focus:ring-blue-500 cursor-pointer" />
+      </div>
+      <span className="ml-3 text-sm text-gray-800 group-hover:text-black">{label}</span>
+    </label>
+  )
+
+  const inputPDFClass = "w-full bg-blue-100/50 border border-gray-400 px-2 py-1 text-sm outline-none focus:bg-blue-100 focus:border-blue-600"
+
+  return (
+    <>
+      <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 shadow-xl border border-gray-200">
+        
+        {errorSuperior && (
+          <div className="p-4 mb-6 rounded flex items-center bg-red-50 text-red-700">
+            <AlertCircle className="w-5 h-5 mr-2"/>
+            Error de conexión: {errorSuperior}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold text-black uppercase">
+              Lista de Chequeo de Capacitación en Sitio del Nuevo Participante (LCCS)
+            </h1>
+          </div>
+
+          <div className="border-2 border-black bg-blue-50/30 p-3 mb-6 text-sm text-justify text-gray-800">
+            <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice la siguiente lista de chequeo como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
+          </div>
+
+          <div className="space-y-4 mb-8">
+            <div className="flex flex-col md:flex-row md:items-center">
+              <span className="font-bold text-sm w-64">Fecha de la capacitación:</span>
+              <div className="flex flex-col md:w-48">
+                <input type="date" {...register('fecha', { required: true })} className={`${inputPDFClass} ${errors.fecha ? 'border-red-500 bg-red-50' : ''} h-[30px]`} />
+                {errors.fecha && <span className="text-red-500 text-xs mt-1">Obligatorio</span>}
+              </div>
+            </div>
+            
+            <div className="flex flex-col md:flex-row md:items-start pt-1">
+              <span className="font-bold text-sm w-64 mt-1">Nombre del capacitador:</span>
+              <div className="flex flex-col flex-1">
+                <input type="hidden" {...register('capacitador_id', { required: true })} />
+                <BuscadorSelect 
+                  opciones={opcionesCapacitadores}
+                  valorSeleccionado={capacitadorId}
+                  alSeleccionar={(val) => setValue('capacitador_id', val, { shouldValidate: true })}
+                  placeholder="-- Buscar Capacitador --"
+                  error={!capacitadorId && errors.capacitador_id}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-start pt-1">
+              <span className="font-bold text-sm w-64 mt-1">Nombres y apellidos del nuevo participante:</span>
+              <div className="flex flex-col flex-1">
+                <input type="hidden" {...register('participante', { required: true })} />
+                <BuscadorSelect 
+                  opciones={opcionesParticipantes}
+                  valorSeleccionado={participanteId}
+                  alSeleccionar={(val) => setValue('participante', val, { shouldValidate: true })}
+                  placeholder="-- Buscar Participante --"
+                  error={!participanteId && errors.participante}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-start pt-1">
+              <span className="font-bold text-sm w-64 mt-1">Punto de la metropolitana:</span>
+              <div className="flex flex-col flex-1">
+                <input type="hidden" {...register('punto', { required: true })} />
+                <BuscadorSelect 
+                  opciones={PUNTOS_METROPOLITANA}
+                  valorSeleccionado={puntoMetropolitana}
+                  alSeleccionar={(val) => setValue('punto', val, { shouldValidate: true })}
+                  placeholder="-- Buscar Punto / Estación --"
+                  error={!puntoMetropolitana && errors.punto}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center pt-2">
+              <span className="font-bold text-sm w-24">Indique:</span>
+              <div className="flex flex-col">
+                <div className="flex flex-wrap gap-6 items-center">
+                  <label className="flex items-center text-sm italic text-gray-700 cursor-pointer">
+                    <span className="mr-2">Primera capacitación en sitio</span>
+                    <input type="radio" value="Primera" {...register('tipoCapacitacion', { required: true })} className="w-5 h-5 bg-blue-100 border-gray-400" />
+                  </label>
+                  <label className="flex items-center text-sm italic text-gray-700 cursor-pointer">
+                    <span className="mr-2">Refuerzo</span>
+                    <input type="radio" value="Refuerzo" {...register('tipoCapacitacion', { required: true })} className="w-5 h-5 bg-blue-100 border-gray-400" />
+                  </label>
+                  <label className="flex items-center text-sm italic text-gray-700 cursor-pointer">
+                    <span className="mr-2">Ultima capacitación en sitio</span>
+                    <input type="radio" value="Ultima" {...register('tipoCapacitacion', { required: true })} className="w-5 h-5 bg-blue-100 border-gray-400" />
+                  </label>
+                </div>
+                {errors.tipoCapacitacion && <span className="text-red-500 text-xs mt-1">Seleccione un tipo de capacitación</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <h2 className="font-bold text-black uppercase mb-2">Antes de la Capacitación</h2>
+              <div className="ml-4">
+                <CheckboxItem name="antes_1" label="Ya se comunicó con el participante" />
+                <CheckboxItem name="antes_2" label="Le comunicó al Hombre clave para informarle de la capacitación y la disponibilidad del turno" />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="font-bold text-black uppercase mb-2">Durante la Capacitación</h2>
+              <h3 className="font-bold text-black text-sm mb-1">Requisitos:</h3>
+              <div className="ml-4 mb-3"><CheckboxItem name="durante_req_1" label="Se repasaron los requisitos que deben cumplir los participantes" /></div>
+
+              <h3 className="font-bold text-black text-sm mb-1">Equipo de predicación:</h3>
+              <div className="ml-4 mb-3">
+                <CheckboxItem name="durante_eq_1" label="Se ha llevado al participante a conocer los lugares donde se guardan los exhibidores." />
+                <CheckboxItem name="durante_eq_2" label="Se enseña a cómo transportar correctamente los exhibidores." />
+                <CheckboxItem name="durante_eq_3" label="Se le enseña a enrollar y guardar correctamente el forro protector del exhibidor." />
+                <CheckboxItem name="durante_eq_4" label="Se muestra cómo usar los elementos de limpieza." />
+                <CheckboxItem name="durante_eq_5" label="Se explica la forma correcta de organizar las publicaciones y que los encargados son los que indican que publicaciones se colocan en los exhibidores." />
+                <CheckboxItem name="durante_eq_6" label="Se muestra que cosas se guardan en la pequeña bodega que hay detrás del exhibidor." />
+              </div>
+
+              <h3 className="font-bold text-black text-sm mb-1">Seguridad:</h3>
+              <div className="ml-4 mb-3">
+                <CheckboxItem name="durante_seg_1" label="Se enseña la forma correcta de ubicar los exhibidores de tal manera que nadie pueda acercarse por detrás y se explica por qué." />
+                <CheckboxItem name="durante_seg_2" label="Se explica cómo actuar ante un perturbador y qué hacer." />
+                <CheckboxItem name="durante_seg_3" label="Se le ayuda a ver la importancia de la seguridad personal." />
+              </div>
+
+              <h3 className="font-bold text-black text-sm mb-1">Turnos:</h3>
+              <div className="ml-4 mb-3">
+                <CheckboxItem name="durante_tur_1" label="El participante llegó puntual a la cita" />
+                <CheckboxItem name="durante_tur_2" label="Se le explica la importancia de estar comprometidos con la asignación." />
+                <CheckboxItem name="durante_tur_3" label="Se le ayuda a saber qué hacer en caso de no poder cumplir el turno" />
+                <CheckboxItem name="durante_tur_4" label="Se le explica cómo abordar a las personas" />
+                <CheckboxItem name="durante_tur_5" label="Durante el turno, sonríe y tiene contacto visual con las personas." />
+                <CheckboxItem name="durante_tur_6" label="Repasó la información sobre cómo iniciar conversaciones y hacerlo de forma natural." />
+                <CheckboxItem name="durante_tur_7" label="Sabe cómo direccionar a las personas al sitio jw.org" />
+                <CheckboxItem name="durante_tur_8" label="No habla demasiado con los demás participantes del turno" />
+                <CheckboxItem name="durante_tur_9" label="Aprendió a usar las herramientas digitales" />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="font-bold text-black uppercase mb-2">Después de la Capacitación</h2>
+              <h3 className="font-bold text-black text-sm mb-1">Aprobación:</h3>
+              <div className="ml-4 mb-4">
+                <RadioItem name="resultadoAprobacion" value="aprobado" label="Participante aprobado" />
+                <RadioItem name="resultadoAprobacion" value="requiere_refuerzo" label="Requiere refuerzo (en 1 mes)" />
+                <RadioItem name="resultadoAprobacion" value="repetir_6_meses" label="Debe realizar nuevamente la capacitación (en 6 meses)" />
+                <RadioItem name="resultadoAprobacion" value="no_cumple" label="Definitivamente no cumple los requisitos para la PPAM después de la capacitación a los 6 meses." />
+                {errors.resultadoAprobacion && <span className="text-red-500 text-xs mt-1 font-bold">Debe seleccionar una decisión final</span>}
+              </div>
+
+              <h3 className="font-bold text-black text-sm mb-1">Observaciones finales:</h3>
+              <textarea {...register('observaciones')} rows="5" className="w-full bg-blue-100/50 border border-gray-400 p-2 mb-4 outline-none focus:bg-blue-100 resize-none"></textarea>
+
+              <h3 className="font-bold text-black text-sm mb-1">Informe:</h3>
+              <div className="ml-4 mb-6">
+                <CheckboxItem name="informe_1" label="Se le ha informado al participante la decisión" />
+                <CheckboxItem name="informe_2" label="Se le informó al hombre clave y encargado de punto" />
+                <CheckboxItem name="informe_3" label="Se informó al comité de servicio del participante si este requiere una capacitación en 6 meses y que debe llenar nuevamente la solicitud" />
+                <CheckboxItem name="informe_4" label="Se informó al comité de servicio del participante que no fue aprobado." />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-300 pt-6 flex flex-col items-center">
+            <span className="text-xs text-gray-500 mb-6">[Antes de enviar el formulario debe verificar toda la información]</span>
+            
+            <button type="submit" disabled={enviando} className="w-full md:w-auto flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-10 rounded shadow-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:scale-100">
+              {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="mr-2" />}
+              {enviando ? 'Guardando evaluación...' : 'Enviar al Departamento Capacitaciones'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {modalExito && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-sm w-full text-center">
+            <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle className="w-16 h-16 text-green-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Evaluación Guardada!</h2>
+            <p className="text-gray-500 mb-8">La lista de chequeo ha sido enviada con éxito al departamento.</p>
+            <button onClick={reiniciarFormulario} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors">
+              Comenzar nueva evaluación
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
