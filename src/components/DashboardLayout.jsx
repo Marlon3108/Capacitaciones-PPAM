@@ -6,6 +6,7 @@ import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
 import InicioDashboard from './InicioDashboard'
 import ConfiguracionPerfil from './ConfiguracionPerfil'
+import HistorialEvaluaciones from './HistorialEvaluaciones'
 
 
 export default function DashboardLayout({ userEmail }) {
@@ -14,6 +15,7 @@ export default function DashboardLayout({ userEmail }) {
 
   const menuItems = [
     { name: 'Inicio', icon: LayoutDashboard },
+    { name: 'Historial Evaluaciones', icon: FileText },
     { name: 'Listas de Chequeo', icon: ClipboardList },
     { name: 'Participantes', icon: Users },
     { name: 'Importar Sheets', icon: FileSpreadsheet },
@@ -97,7 +99,9 @@ export default function DashboardLayout({ userEmail }) {
         <div className="flex-1 overflow-auto p-8 bg-slate-50">
           <div className="max-w-[1400px] mx-auto h-full">
             {activeMenu === 'Inicio' ? (
-              <InicioDashboard userName={userEmail} />
+            <InicioDashboard userName={userEmail} />
+            ) : activeMenu === 'Historial Evaluaciones' ? (
+            <HistorialEvaluaciones />
             ) : activeMenu === 'Participantes' ? (
               <TableroParticipantes />
             ) : activeMenu === 'Listas de Chequeo' ? (
