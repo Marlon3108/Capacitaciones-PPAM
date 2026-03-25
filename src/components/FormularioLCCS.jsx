@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '../supabaseClient'
-import { Save, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle, Loader2, Lock, SaveAll } from 'lucide-react'
 import BuscadorSelect from './BuscadorSelect'
 
 const PUNTOS_METROPOLITANA = [
@@ -20,34 +20,85 @@ const PUNTOS_METROPOLITANA = [
   { value: 'Yumbo', label: 'Yumbo (Sebastián Redondo/ Juan Esteban)' }
 ]
 
-export default function FormularioLCCS() {
+export default function FormularioLCCS({ preDatos = null }) {
   const [opcionesParticipantes, setOpcionesParticipantes] = useState([])
   const [opcionesCapacitadores, setOpcionesCapacitadores] = useState([])
   const [enviando, setEnviando] = useState(false)
+  const [hayBorrador, setHayBorrador] = useState(false)
   
   const [modalExito, setModalExito] = useState(false)
   const [errorSuperior, setErrorSuperior] = useState(null)
+  
+  const [nombreCapacitadorLogueado, setNombreCapacitadorLogueado] = useState('')
+  const [idCapacitadorLogueado, setIdCapacitadorLogueado] = useState(null)
 
-  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm()
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch, getValues } = useForm()
   
   const capacitadorId = watch('capacitador_id')
   const participanteId = watch('participante')
   const puntoMetropolitana = watch('punto')
 
+  // Vigilar TODOS los cambios del formulario para el autoguardado
+  const formValues = watch()
+
+  // 1. CARGAR DATOS INICIALES Y REVISAR BORRADORES
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: partData } = await supabase.from('participantes').select('id, nombres_apellidos, codigo_unico').eq('estado', 'pendiente')
-      if (partData) {
-        setOpcionesParticipantes(partData.map(p => ({ value: p.id, label: `${p.nombres_apellidos} (Cód: ${p.codigo_unico})` })))
+    const fetchDatosIniciales = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const { data: usuario } = await supabase.from('usuarios').select('id, nombre_completo').eq('id', session.user.id).single()
+        if (usuario) {
+          setNombreCapacitadorLogueado(usuario.nombre_completo)
+          setIdCapacitadorLogueado(usuario.id)
+        }
       }
 
-      const { data: capData } = await supabase.from('usuarios').select('id, nombre_completo')
-      if (capData) {
-        setOpcionesCapacitadores(capData.map(c => ({ value: c.id, label: c.nombre_completo })))
+      if (!preDatos) {
+        const { data: partData } = await supabase.from('participantes').select('id, nombres_apellidos, codigo_unico').eq('estado', 'pendiente')
+        if (partData) setOpcionesParticipantes(partData.map(p => ({ value: p.id, label: `${p.nombres_apellidos} (Cód: ${p.codigo_unico})` })))
+
+        const { data: capData } = await supabase.from('usuarios').select('id, nombre_completo')
+        if (capData) setOpcionesCapacitadores(capData.map(c => ({ value: c.id, label: c.nombre_completo })))
+      } else {
+        if (preDatos.fecha_programada) {
+          const fechaObj = new Date(preDatos.fecha_programada)
+          setValue('fecha', fechaObj.toISOString().split('T')[0])
+        }
+        setValue('punto', preDatos.punto_programado || '')
+        setValue('participante', preDatos.id)
+        if (session) setValue('capacitador_id', session.user.id)
+
+        // VERIFICAR SI HAY UN BORRADOR GUARDADO PARA ESTE PARTICIPANTE
+        const borradorGuardado = localStorage.getItem(`borrador_lccs_${preDatos.id}`)
+        if (borradorGuardado) {
+          const datosParseados = JSON.parse(borradorGuardado)
+          // Rellenar el formulario con los datos del borrador
+          Object.keys(datosParseados).forEach(key => {
+            // No sobreescribir los datos principales de asignación
+            if (!['fecha', 'punto', 'participante', 'capacitador_id'].includes(key)) {
+              setValue(key, datosParseados[key])
+            }
+          })
+          setHayBorrador(true)
+          setTimeout(() => setHayBorrador(false), 5000) // Ocultar el aviso después de 5 seg
+        }
       }
     }
-    fetchData()
-  }, [modalExito])
+    
+    fetchDatosIniciales()
+  }, [preDatos, setValue])
+
+  // 2. EFECTO PARA GUARDAR BORRADOR CADA VEZ QUE CAMBIA ALGO
+  useEffect(() => {
+    // Solo guardamos borrador si hay un participante seleccionado
+    if (participanteId && Object.keys(formValues).length > 0) {
+      // Usamos un timeout pequeño para no saturar el localStorage por cada tecla presionada
+      const timer = setTimeout(() => {
+        localStorage.setItem(`borrador_lccs_${participanteId}`, JSON.stringify(formValues))
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [formValues, participanteId])
 
   const onSubmit = async (data) => {
     if (!data.capacitador_id || !data.participante || !data.punto) return
@@ -75,6 +126,8 @@ export default function FormularioLCCS() {
         .eq('id', data.participante)
       if (errorPart) throw errorPart
 
+      // SI SE ENVÍA CON ÉXITO, BORRAMOS EL BORRADOR
+      localStorage.removeItem(`borrador_lccs_${data.participante}`)
       setModalExito(true)
       
     } catch (error) {
@@ -87,12 +140,15 @@ export default function FormularioLCCS() {
   const reiniciarFormulario = () => {
     setModalExito(false)
     reset()
-    setValue('capacitador_id', null)
-    setValue('participante', null)
-    setValue('punto', null)
+    if (!preDatos) {
+      setValue('capacitador_id', null)
+      setValue('participante', null)
+      setValue('punto', null)
+    }
     window.scrollTo(0, 0)
   }
 
+  // --- COMPONENTES VISUALES ---
   const CheckboxItem = ({ name, label }) => (
     <label className="flex items-start cursor-pointer group mb-2">
       <div className="mt-1">
@@ -115,8 +171,15 @@ export default function FormularioLCCS() {
 
   return (
     <>
-      <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 shadow-xl border border-gray-200">
+      <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 shadow-xl border border-gray-200 relative">
         
+        {/* AVISO DE BORRADOR RECUPERADO */}
+        {hayBorrador && (
+          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-full text-sm font-bold flex items-center shadow-md animate-bounce">
+            <SaveAll size={16} className="mr-2" /> Se recuperó una evaluación sin terminar
+          </div>
+        )}
+
         {errorSuperior && (
           <div className="p-4 mb-6 rounded flex items-center bg-red-50 text-red-700">
             <AlertCircle className="w-5 h-5 mr-2"/>
@@ -125,7 +188,7 @@ export default function FormularioLCCS() {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="text-center mb-6">
+          <div className="text-center mb-6 pt-4">
             <h1 className="text-xl font-bold text-black uppercase">
               Lista de Chequeo de Capacitación en Sitio del Nuevo Participante (LCCS)
             </h1>
@@ -135,54 +198,93 @@ export default function FormularioLCCS() {
             <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice la siguiente lista de chequeo como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
           </div>
 
+          {/* ... [EL RESTO DE TU FORMULARIO SE MANTIENE EXACTAMENTE IGUAL] ... */}
           <div className="space-y-4 mb-8">
             <div className="flex flex-col md:flex-row md:items-center">
-              <span className="font-bold text-sm w-64">Fecha de la capacitación:</span>
+              <span className="font-bold text-sm w-64 flex items-center">
+                Fecha de la capacitación: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
+              </span>
               <div className="flex flex-col md:w-48">
-                <input type="date" {...register('fecha', { required: true })} className={`${inputPDFClass} ${errors.fecha ? 'border-red-500 bg-red-50' : ''} h-[30px]`} />
-                {errors.fecha && <span className="text-red-500 text-xs mt-1">Obligatorio</span>}
+                {preDatos ? (
+                  <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
+                    {preDatos.fecha_programada ? new Date(preDatos.fecha_programada).toLocaleDateString() : 'Sin fecha asignada'}
+                  </div>
+                ) : (
+                  <input type="date" {...register('fecha', { required: true })} className={`${inputPDFClass} ${errors.fecha ? 'border-red-500 bg-red-50' : ''} h-[30px]`} />
+                )}
+                {errors.fecha && !preDatos && <span className="text-red-500 text-xs mt-1">Obligatorio</span>}
               </div>
             </div>
             
             <div className="flex flex-col md:flex-row md:items-start pt-1">
-              <span className="font-bold text-sm w-64 mt-1">Nombre del capacitador:</span>
+              <span className="font-bold text-sm w-64 mt-1 flex items-center">
+                Nombre del capacitador: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
+              </span>
               <div className="flex flex-col flex-1">
-                <input type="hidden" {...register('capacitador_id', { required: true })} />
-                <BuscadorSelect 
-                  opciones={opcionesCapacitadores}
-                  valorSeleccionado={capacitadorId}
-                  alSeleccionar={(val) => setValue('capacitador_id', val, { shouldValidate: true })}
-                  placeholder="-- Buscar Capacitador --"
-                  error={!capacitadorId && errors.capacitador_id}
-                />
+                {preDatos ? (
+                  <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
+                    {nombreCapacitadorLogueado}
+                  </div>
+                ) : (
+                  <>
+                    <input type="hidden" {...register('capacitador_id', { required: true })} />
+                    <BuscadorSelect 
+                      opciones={opcionesCapacitadores}
+                      valorSeleccionado={capacitadorId}
+                      alSeleccionar={(val) => setValue('capacitador_id', val, { shouldValidate: true })}
+                      placeholder="-- Buscar Capacitador --"
+                      error={!capacitadorId && errors.capacitador_id}
+                    />
+                  </>
+                )}
               </div>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-start pt-1">
-              <span className="font-bold text-sm w-64 mt-1">Nombres y apellidos del nuevo participante:</span>
+              <span className="font-bold text-sm w-64 mt-1 flex items-center">
+                Nombres y apellidos del nuevo participante: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
+              </span>
               <div className="flex flex-col flex-1">
-                <input type="hidden" {...register('participante', { required: true })} />
-                <BuscadorSelect 
-                  opciones={opcionesParticipantes}
-                  valorSeleccionado={participanteId}
-                  alSeleccionar={(val) => setValue('participante', val, { shouldValidate: true })}
-                  placeholder="-- Buscar Participante --"
-                  error={!participanteId && errors.participante}
-                />
+                {preDatos ? (
+                  <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed font-semibold">
+                    {preDatos.nombres_apellidos}
+                  </div>
+                ) : (
+                  <>
+                    <input type="hidden" {...register('participante', { required: true })} />
+                    <BuscadorSelect 
+                      opciones={opcionesParticipantes}
+                      valorSeleccionado={participanteId}
+                      alSeleccionar={(val) => setValue('participante', val, { shouldValidate: true })}
+                      placeholder="-- Buscar Participante --"
+                      error={!participanteId && errors.participante}
+                    />
+                  </>
+                )}
               </div>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-start pt-1">
-              <span className="font-bold text-sm w-64 mt-1">Punto de la metropolitana:</span>
+              <span className="font-bold text-sm w-64 mt-1 flex items-center">
+                Punto de la metropolitana: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
+              </span>
               <div className="flex flex-col flex-1">
-                <input type="hidden" {...register('punto', { required: true })} />
-                <BuscadorSelect 
-                  opciones={PUNTOS_METROPOLITANA}
-                  valorSeleccionado={puntoMetropolitana}
-                  alSeleccionar={(val) => setValue('punto', val, { shouldValidate: true })}
-                  placeholder="-- Buscar Punto / Estación --"
-                  error={!puntoMetropolitana && errors.punto}
-                />
+                {preDatos ? (
+                  <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
+                    {preDatos.punto_programado || 'Sin punto asignado'}
+                  </div>
+                ) : (
+                  <>
+                    <input type="hidden" {...register('punto', { required: true })} />
+                    <BuscadorSelect 
+                      opciones={PUNTOS_METROPOLITANA}
+                      valorSeleccionado={puntoMetropolitana}
+                      alSeleccionar={(val) => setValue('punto', val, { shouldValidate: true })}
+                      placeholder="-- Buscar Punto / Estación --"
+                      error={!puntoMetropolitana && errors.punto}
+                    />
+                  </>
+                )}
               </div>
             </div>
 

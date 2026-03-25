@@ -4,27 +4,18 @@ import { Search, ChevronLeft, ChevronRight, Activity, ShieldAlert, Download, Eye
 
 // Diccionario exacto basado en la LCCS - PPAM Oficial
 const diccionarioPreguntas = {
-  // ANTES DE LA CAPACITACIÓN
   antes_1: "Antes: ¿Ya se comunicó con el participante?",
   antes_2: "Antes: ¿Le comunicó al Hombre clave para informarle de la capacitación y la disponibilidad del turno?",
-  
-  // REQUISITOS
   durante_req_1: "Requisitos: ¿Se repasaron los requisitos que deben cumplir los participantes?",
-  
-  // EQUIPO DE PREDICACIÓN
   durante_eq_1: "Equipo: ¿Se ha llevado al participante a conocer los lugares donde se guardan los exhibidores?",
   durante_eq_2: "Equipo: ¿Se enseña a cómo transportar correctamente los exhibidores?",
   durante_eq_3: "Equipo: ¿Se le enseña a enrollar y guardar correctamente el forro protector del exhibidor?",
   durante_eq_4: "Equipo: ¿Se muestra cómo usar los elementos de limpieza?",
   durante_eq_5: "Equipo: ¿Se explica la forma correcta de organizar las publicaciones y su indicación?",
   durante_eq_6: "Equipo: ¿Se muestra qué cosas se guardan en la pequeña bodega que hay detrás del exhibidor?",
-  
-  // SEGURIDAD
   durante_seg_1: "Seguridad: ¿Se enseña la forma correcta de ubicar los exhibidores para que nadie se acerque por detrás?",
   durante_seg_2: "Seguridad: ¿Se explica cómo actuar ante un perturbador y qué hacer?",
   durante_seg_3: "Seguridad: ¿Se le ayuda a ver la importancia de la seguridad personal?",
-  
-  // TURNOS
   durante_tur_1: "Turnos: ¿El participante llegó puntual a la cita?",
   durante_tur_2: "Turnos: ¿Se le explica la importancia de estar comprometidos con la asignación?",
   durante_tur_3: "Turnos: ¿Se le ayuda a saber qué hacer en caso de no poder cumplir el turno?",
@@ -34,8 +25,6 @@ const diccionarioPreguntas = {
   durante_tur_7: "Turnos: ¿Sabe cómo direccionar a las personas al sitio web?",
   durante_tur_8: "Turnos: ¿No habla demasiado con los demás participantes del turno?",
   durante_tur_9: "Turnos: ¿Aprendió a usar las herramientas digitales?",
-
-  // INFORME DESPUÉS DE LA CAPACITACIÓN
   informe_1: "Informe: ¿Se le ha informado al participante la decisión?",
   informe_2: "Informe: ¿Se le informó al hombre clave y encargado de punto?",
   informe_3: "Informe: ¿Se informó al comité de servicio si requiere capacitación en 6 meses?",
@@ -43,9 +32,7 @@ const diccionarioPreguntas = {
 };
 
 const obtenerTextoPregunta = (clave) => {
-  if (diccionarioPreguntas[clave]) {
-    return diccionarioPreguntas[clave];
-  }
+  if (diccionarioPreguntas[clave]) return diccionarioPreguntas[clave];
   return clave.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
@@ -59,7 +46,6 @@ const traducirEstado = (estado) => {
   return diccionario[estado] || { texto: estado, color: 'text-gray-700 bg-gray-100' }
 }
 
-// ESTA ES LA LÍNEA QUE LE FALTABA A VERCEL PARA COMPILAR:
 export default function HistorialEvaluaciones() {
   const [evaluaciones, setEvaluaciones] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -67,6 +53,7 @@ export default function HistorialEvaluaciones() {
   const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [paginaActual, setPaginaActual] = useState(1)
+  const [rolUsuario, setRolUsuario] = useState('') // <--- AÑADIDO PARA EL TÍTULO
   const itemsPorPagina = 10
 
   useEffect(() => {
@@ -81,14 +68,17 @@ export default function HistorialEvaluaciones() {
         .single()
 
       const rol = userData?.roles?.nombre?.toLowerCase() || ''
-      
-      if (rol !== 'administrador' && rol !== 'coordinador' && rol !== 'superintendente') {
+      setRolUsuario(rol) // Guardamos el rol
+
+      // 1. AHORA PERMITIMOS QUE EL CAPACITADOR TAMBIÉN PASE ESTE FILTRO
+      if (rol !== 'administrador' && rol !== 'coordinador' && rol !== 'superintendente' && rol !== 'capacitador') {
         setAccesoDenegado(true)
         setCargando(false)
         return
       }
 
-      const { data, error } = await supabase
+      // 2. CONSTRUIMOS LA CONSULTA
+      let query = supabase
         .from('evaluaciones_lccs')
         .select(`
           *,
@@ -96,6 +86,13 @@ export default function HistorialEvaluaciones() {
           usuarios(nombre_completo)
         `)
         .order('creado_en', { ascending: false })
+
+      // 3. SI ES CAPACITADOR, SOLO TRAE LAS SUYAS
+      if (rol === 'capacitador') {
+        query = query.eq('capacitador_id', session.user.id)
+      }
+
+      const { data } = await query
 
       if (data) setEvaluaciones(data)
       setCargando(false)
@@ -133,8 +130,92 @@ export default function HistorialEvaluaciones() {
     setPaginaActual(1)
   }
 
-  const generarPDF = (idEvaluacion) => {
-    alert(`Pronto se descargará el PDF de la evaluación ID: ${idEvaluacion}`)
+  const generarPDF = (ev) => {
+    let htmlContent = `
+      <html>
+        <head>
+          <title>Evaluación - ${ev.participantes?.nombres_apellidos}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; color: #333; line-height: 1.6; max-width: 800px; margin: 0 auto; }
+            .header { border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px; }
+            .title { font-size: 24px; font-weight: bold; color: #1e40af; margin: 0 0 10px 0; }
+            .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; }
+            .info-item strong { display: block; font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+            .section-title { font-size: 16px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; color: #1e293b; }
+            .response-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; page-break-inside: avoid; }
+            .response-q { width: 80%; font-size: 14px; }
+            .response-a { font-weight: bold; }
+            .a-yes { color: #16a34a; } .a-no { color: #dc2626; }
+            .obs-box { background: #fefce8; border: 1px solid #fef08a; padding: 15px; border-radius: 8px; margin-top: 30px; page-break-inside: avoid; }
+            .result-box { margin-top: 40px; padding: 20px; text-align: center; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 18px; font-weight: bold; background: #f8fafc; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 class="title">Lista de Chequeo LCCS</h1>
+            <p class="subtitle">Programa de Predicación Pública en Áreas Metropolitanas</p>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-item"><strong>Participante Evaluado</strong>${ev.participantes?.nombres_apellidos}</div>
+            <div class="info-item"><strong>Capacitador / Supervisor</strong>${ev.usuarios?.nombre_completo}</div>
+            <div class="info-item"><strong>Punto Metropolitano</strong>${ev.punto_metropolitana || 'No especificado'}</div>
+            <div class="info-item"><strong>Fecha de Evaluación</strong>${new Date(ev.creado_en).toLocaleDateString()}</div>
+            <div class="info-item"><strong>Congregación</strong>${ev.participantes?.congregacion || 'No especificada'}</div>
+            <div class="info-item"><strong>Ciudad</strong>${ev.participantes?.ciudad || 'No especificada'}</div>
+          </div>
+
+          <h2 class="section-title">Respuestas del Checklist</h2>
+    `;
+
+    if (ev.respuestas && typeof ev.respuestas === 'object') {
+      const clavesIgnoradas = ['participante', 'capacitador_id', 'capacitador', 'id', 'fecha', 'observaciones_finales'];
+      
+      Object.entries(ev.respuestas).forEach(([clave, valor]) => {
+        if (!clavesIgnoradas.some(ignorada => clave.toLowerCase().includes(ignorada))) {
+          const nombreBonito = obtenerTextoPregunta(clave);
+          let valorFormateado = valor;
+          let claseColor = '';
+          
+          if (valor === true || valor === 'Sí' || valor === 'Cumple') { valorFormateado = 'SÍ'; claseColor = 'a-yes'; }
+          else if (valor === false || valor === 'No' || valor === 'No Cumple') { valorFormateado = 'NO'; claseColor = 'a-no'; }
+
+          htmlContent += `
+            <div class="response-item">
+              <div class="response-q">${nombreBonito}</div>
+              <div class="response-a ${claseColor}">${valorFormateado}</div>
+            </div>
+          `;
+        }
+      });
+    }
+
+    if (ev.observaciones_finales) {
+      htmlContent += `
+        <div class="obs-box">
+          <strong>Observaciones del Capacitador:</strong><br/>
+          <p style="margin-top: 8px; font-size: 14px;">${ev.observaciones_finales}</p>
+        </div>
+      `;
+    }
+
+    const estadoFinal = traducirEstado(ev.resultado_aprobacion);
+    htmlContent += `
+          <div class="result-box" style="border-color: ${estadoFinal.texto === 'Aprobado' ? '#16a34a' : '#dc2626'}; color: ${estadoFinal.texto === 'Aprobado' ? '#16a34a' : '#dc2626'}">
+            Resultado Final de la Capacitación: ${estadoFinal.texto.toUpperCase()}
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   }
 
   if (cargando) return <div className="h-full flex items-center justify-center"><Activity className="animate-spin mr-2 text-blue-600" /> Cargando historial...</div>
@@ -152,8 +233,15 @@ export default function HistorialEvaluaciones() {
   return (
     <div className="space-y-6 pb-10 relative">
       <div>
-        <h1 className="text-3xl font-bold text-gray-800">Historial de Evaluaciones</h1>
-        <p className="text-gray-500 mt-1">Consulta y visualiza los resultados detallados de todas las listas de chequeo.</p>
+        {/* Título dinámico según el rol */}
+        <h1 className="text-3xl font-bold text-gray-800">
+          {rolUsuario === 'capacitador' ? 'Mis Evaluaciones Realizadas' : 'Historial de Evaluaciones'}
+        </h1>
+        <p className="text-gray-500 mt-1">
+          {rolUsuario === 'capacitador' 
+            ? 'Consulta y descarga los resultados de las personas que has evaluado.' 
+            : 'Consulta y visualiza los resultados detallados de todas las listas de chequeo.'}
+        </p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -180,7 +268,7 @@ export default function HistorialEvaluaciones() {
                 <th className="p-4 font-semibold">Fecha</th>
                 <th className="p-4 font-semibold">Participante</th>
                 <th className="p-4 font-semibold">Detalles</th>
-                <th className="p-4 font-semibold">Capacitador</th>
+                {rolUsuario !== 'capacitador' && <th className="p-4 font-semibold">Capacitador</th>}
                 <th className="p-4 font-semibold">Resultado</th>
                 <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
@@ -188,7 +276,7 @@ export default function HistorialEvaluaciones() {
             <tbody className="text-sm divide-y divide-gray-100">
               {evaluacionesPaginadas.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-gray-500">
+                  <td colSpan={rolUsuario === 'capacitador' ? 5 : 6} className="p-8 text-center text-gray-500">
                     No se encontraron evaluaciones con esos criterios.
                   </td>
                 </tr>
@@ -207,7 +295,9 @@ export default function HistorialEvaluaciones() {
                         <div className="text-gray-800">{ev.punto_metropolitana}</div>
                         <div className="text-xs text-gray-500 mt-1">{ev.participantes?.ciudad} • {ev.participantes?.congregacion}</div>
                       </td>
-                      <td className="p-4 text-gray-600">{ev.usuarios?.nombre_completo}</td>
+                      {rolUsuario !== 'capacitador' && (
+                        <td className="p-4 text-gray-600">{ev.usuarios?.nombre_completo}</td>
+                      )}
                       <td className="p-4">
                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${est.color}`}>
                           {est.texto}
@@ -222,8 +312,9 @@ export default function HistorialEvaluaciones() {
                           >
                             <Eye size={18} />
                           </button>
+                          
                           <button 
-                            onClick={() => generarPDF(ev.id)}
+                            onClick={() => generarPDF(ev)}
                             className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors"
                             title="Descargar PDF"
                           >
@@ -264,6 +355,7 @@ export default function HistorialEvaluaciones() {
         )}
       </div>
 
+      {/* POPUP DE VISUALIZACIÓN EN PANTALLA */}
       {evaluacionSeleccionada && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">

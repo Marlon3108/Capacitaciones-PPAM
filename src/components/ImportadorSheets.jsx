@@ -11,6 +11,8 @@ export default function ImportadorSheets() {
   const [columnaNombre, setColumnaNombre] = useState('')
   const [columnaCiudad, setColumnaCiudad] = useState('')
   const [columnaCongregacion, setColumnaCongregacion] = useState('')
+  const [columnaTelefono, setColumnaTelefono] = useState('')
+  const [columnaPrioridad, setColumnaPrioridad] = useState('')
   
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
@@ -81,8 +83,9 @@ export default function ImportadorSheets() {
 
   // LÓGICA INTELIGENTE ANTI-DUPLICADOS
   const handleImportar = async () => {
-    if (!columnaNombre || !columnaCiudad || !columnaCongregacion) {
-      setMensaje({ tipo: 'error', texto: 'Por favor, selecciona las columnas de Nombre, Ciudad y Congregación.' })
+    // AHORA TAMBIÉN EXIGE QUE SELECCIONE LA COLUMNA DE TELÉFONO
+    if (!columnaNombre || !columnaCiudad || !columnaCongregacion || !columnaTelefono || !columnaPrioridad) {
+      setMensaje({ tipo: 'error', texto: 'Por favor, selecciona todas las columnas requeridas (Nombre, Ciudad, Congregación, Teléfono y Prioridad).' })
       return
     }
 
@@ -92,12 +95,14 @@ export default function ImportadorSheets() {
     const indiceNombre = encabezados.indexOf(columnaNombre)
     const indiceCiudad = encabezados.indexOf(columnaCiudad)
     const indiceCongregacion = encabezados.indexOf(columnaCongregacion)
+    const indiceTelefono = encabezados.indexOf(columnaTelefono)
+    const indicePrioridad = encabezados.indexOf(columnaPrioridad)
 
     try {
       // 1. Traer los participantes que YA existen en Supabase
       const { data: existentes, error: errorFetch } = await supabase
         .from('participantes')
-        .select('id, nombres_apellidos, ciudad, congregacion, codigo_unico, estado')
+        .select('id, nombres_apellidos, ciudad, congregacion, codigo_unico, estado, telefono')
 
       if (errorFetch) throw errorFetch
 
@@ -111,20 +116,30 @@ export default function ImportadorSheets() {
 
         const ciudadExcel = fila[indiceCiudad] ? fila[indiceCiudad].toString().trim() : 'No especificada'
         const congregacionExcel = fila[indiceCongregacion] ? fila[indiceCongregacion].toString().trim() : 'No especificada'
+        const telefonoExcel = fila[indiceTelefono] ? fila[indiceTelefono].toString().trim() : null
+        
+        // <--- AÑADIR ESTO PARA LEER EL TRUE/FALSE
+        let prioridadExcel = false
+        if (fila[indicePrioridad] !== undefined && fila[indicePrioridad] !== null) {
+          const val = fila[indicePrioridad].toString().toUpperCase().trim()
+          prioridadExcel = (val === 'TRUE' || val === 'VERDADERO' || val === 'SI' || val === '1')
+        }
 
         // Buscar si ya existe alguien con ese mismo nombre exacto
         const pExistente = existentes.find(p => p.nombres_apellidos.toLowerCase() === nombreExcel.toLowerCase())
 
         if (pExistente) {
-          // Si existe, verificamos si le cambiaron la ciudad o congregación en el nuevo Excel
-          if (pExistente.ciudad !== ciudadExcel || pExistente.congregacion !== congregacionExcel) {
+          // Si existe, verificamos si le cambiaron la ciudad, congregación O TELÉFONO en el nuevo Excel
+          if (pExistente.ciudad !== ciudadExcel || pExistente.congregacion !== congregacionExcel || pExistente.telefono !== telefonoExcel) {
             existentesAActualizar.push({
               id: pExistente.id,
               nombres_apellidos: pExistente.nombres_apellidos, 
               ciudad: ciudadExcel,
               congregacion: congregacionExcel,
-              codigo_unico: pExistente.codigo_unico, // Mantenemos su código original
-              estado: pExistente.estado // Mantenemos su estado original
+              telefono: telefonoExcel,
+              es_prioridad: prioridadExcel,
+              codigo_unico: pExistente.codigo_unico, 
+              estado: pExistente.estado 
             })
           }
         } else {
@@ -134,6 +149,8 @@ export default function ImportadorSheets() {
             nombres_apellidos: nombreExcel,
             ciudad: ciudadExcel,
             congregacion: congregacionExcel,
+            telefono: telefonoExcel,
+            es_prioridad: prioridadExcel,
             estado: 'pendiente'
           })
         }
@@ -144,9 +161,8 @@ export default function ImportadorSheets() {
         const { error: errIn } = await supabase.from('participantes').insert(nuevosAInsertar)
         if (errIn) throw errIn
       }
-
+      
       if (existentesAActualizar.length > 0) {
-        // Upsert actualiza usando el ID que le pasamos
         const { error: errUp } = await supabase.from('participantes').upsert(existentesAActualizar)
         if (errUp) throw errUp
       }
@@ -160,7 +176,7 @@ export default function ImportadorSheets() {
         setArchivo(null)
         setEncabezados([])
         setDatosBrutos([])
-        setColumnaNombre(''); setColumnaCiudad(''); setColumnaCongregacion('')
+        setColumnaNombre(''); setColumnaCiudad(''); setColumnaCongregacion(''); setColumnaTelefono('')
       }, 5000)
 
     } catch (error) {
@@ -171,12 +187,10 @@ export default function ImportadorSheets() {
     setCargando(false)
   }
 
-  // PANTALLA DE CARGA MIENTRAS VERIFICA EL ROL
   if (verificandoRol) {
     return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin mr-2 text-blue-600" /> Verificando permisos...</div>
   }
 
-  // PANTALLA DE BLOQUEO SI NO ES ADMINISTRADOR
   if (accesoDenegado) {
     return (
       <div className="bg-red-50 border border-red-200 p-8 rounded-2xl flex flex-col items-center justify-center text-center max-w-md mx-auto mt-10">
@@ -187,13 +201,12 @@ export default function ImportadorSheets() {
     )
   }
 
-  // SI ES ADMINISTRADOR, MUESTRA EL COMPONENTE NORMAL
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Paso 1: Cargar Participantes</h2>
         <p className="text-gray-500 mb-6 text-sm">
-          El sistema es inteligente: Si el participante ya existe, <strong>no lo duplicará</strong>, solo actualizará su ciudad o congregación si detecta cambios. Si es nuevo, le generará un código.
+          El sistema es inteligente: Si el participante ya existe, <strong>no lo duplicará</strong>, solo actualizará su información si detecta cambios. Si es nuevo, le generará un código.
         </p>
 
         <div className="flex items-center justify-center w-full">
@@ -260,6 +273,27 @@ export default function ImportadorSheets() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-blue-50">
+              <div className="w-1/3"><span className="font-medium text-blue-900 text-sm">Teléfono / WhatsApp <span className="text-red-500">*</span></span></div>
+              <div className="w-10 flex justify-center text-blue-400"><LinkIcon size={16}/></div>
+              <div className="w-1/2">
+                <select value={columnaTelefono} onChange={(e) => setColumnaTelefono(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">-- Selecciona --</option>
+                  {encabezados.map(enc => <option key={enc} value={enc}>{enc}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-amber-50">
+              <div className="w-1/3"><span className="font-medium text-amber-900 text-sm">Prioritario (Urgente) <span className="text-red-500">*</span></span></div>
+              <div className="w-10 flex justify-center text-amber-400"><LinkIcon size={16}/></div>
+              <div className="w-1/2">
+                <select value={columnaPrioridad} onChange={(e) => setColumnaPrioridad(e.target.value)} className="w-full p-2 border border-amber-300 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">-- Selecciona --</option>
+                  {encabezados.map(enc => <option key={enc} value={enc}>{enc}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
 
           {mensaje && (

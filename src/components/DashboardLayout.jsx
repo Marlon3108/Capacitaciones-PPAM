@@ -1,26 +1,61 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { LogOut, Menu, X, Users, ClipboardList, AlertCircle, LayoutDashboard, Settings, FileSpreadsheet, FileText } from 'lucide-react'
+import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity } from 'lucide-react'
 import ImportadorSheets from './ImportadorSheets'
 import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
 import InicioDashboard from './InicioDashboard'
 import ConfiguracionPerfil from './ConfiguracionPerfil'
 import HistorialEvaluaciones from './HistorialEvaluaciones'
-
+import AsignacionParticipantes from './AsignacionParticipantes'
 
 export default function DashboardLayout({ userEmail }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState('Inicio')
+  const [datosEvaluacion, setDatosEvaluacion] = useState(null)
+  const [rolUsuario, setRolUsuario] = useState(null)
+  const [cargandoRol, setCargandoRol] = useState(true)
 
-  const menuItems = [
-    { name: 'Inicio', icon: LayoutDashboard },
-    { name: 'Historial Evaluaciones', icon: FileText },
-    { name: 'Listas de Chequeo', icon: ClipboardList },
-    { name: 'Participantes', icon: Users },
-    { name: 'Importar Sheets', icon: FileSpreadsheet },
-    { name: 'Configuración', icon: Settings },
+  const handleCambioPestana = (menu, datosOpcionales = null) => {
+    setActiveMenu(menu)
+    setDatosEvaluacion(datosOpcionales)
+    setSidebarOpen(false)
+  }
+
+  useEffect(() => {
+    const obtenerRol = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const { data: userData } = await supabase
+          .from('usuarios')
+          .select('roles(nombre)')
+          .eq('id', session.user.id)
+          .single()
+        
+        setRolUsuario(userData?.roles?.nombre?.toLowerCase() || 'capacitador')
+      }
+      setCargandoRol(false)
+    }
+    obtenerRol()
+  }, [])
+
+  // Menú completo. Usamos la propiedad 'rolesPermitidos' para decidir quién lo ve
+  const menuItemsCompleto = [
+    { name: 'Inicio', icon: LayoutDashboard, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Historial Evaluaciones', icon: FileText, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Listas de Chequeo', icon: ClipboardList, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
+    { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
+    { name: 'Importar Sheets', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
+    { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
   ]
+
+  // Filtramos el menú según el rol que tenga la persona
+  const menuItems = menuItemsCompleto.filter(item => 
+    rolUsuario && item.rolesPermitidos.includes(rolUsuario)
+  )
+
+  if (cargandoRol) return <div className="h-screen flex items-center justify-center bg-gray-50"><Activity className="animate-spin text-blue-600 mr-2" /> Cargando...</div>
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -74,7 +109,9 @@ export default function DashboardLayout({ userEmail }) {
           {/* Usuario y Cerrar Sesión */}
           <div className="p-4 border-t border-gray-200">
             <div className="px-4 py-3 mb-2 rounded-xl bg-gray-50 flex flex-col">
-              <span className="text-xs text-gray-500 font-medium uppercase">Usuario actual</span>
+              <span className="text-xs text-gray-500 font-medium uppercase">
+                {rolUsuario}
+              </span>
               <span className="text-sm font-semibold text-gray-800 truncate">{userEmail}</span>
             </div>
             <button
@@ -90,36 +127,34 @@ export default function DashboardLayout({ userEmail }) {
 
       {/* Área Principal de Contenido */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header superior */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
           <h1 className="text-xl font-semibold text-gray-800 pl-10 lg:pl-0">{activeMenu}</h1>
         </header>
 
-        {/* Contenido Dinámico */}
         <div className="flex-1 overflow-auto p-8 bg-slate-50">
           <div className="max-w-[1400px] mx-auto h-full">
             {activeMenu === 'Inicio' ? (
-            <InicioDashboard userName={userEmail} />
+              // 1. CAMBIAMOS setActiveMenu POR handleCambioPestana
+              <InicioDashboard userName={userEmail} setPestanaActiva={handleCambioPestana} />
             ) : activeMenu === 'Historial Evaluaciones' ? (
-            <HistorialEvaluaciones />
+              <HistorialEvaluaciones />
             ) : activeMenu === 'Participantes' ? (
               <TableroParticipantes />
+            ) : activeMenu === 'Programación' ? (
+              <AsignacionParticipantes />
             ) : activeMenu === 'Listas de Chequeo' ? (
-              <FormularioLCCS />
+              <FormularioLCCS preDatos={datosEvaluacion} />
             ) : activeMenu === 'Importar Sheets' ? (
               <ImportadorSheets />
             ) : activeMenu === 'Configuración' ? (
               <ConfiguracionPerfil userEmail={userEmail} />
             ) : (
-              // El caso por defecto si algo falla
               <div className="bg-white rounded-2xl p-8 text-center">Módulo no encontrado</div>
             )}
-
           </div>
         </div>
       </main>
 
-      {/* Overlay oscuro para móvil cuando el menú está abierto */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/20 z-30 lg:hidden"
