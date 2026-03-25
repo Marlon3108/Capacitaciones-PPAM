@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false) // <--- NUEVO ESTADO
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -55,14 +57,29 @@ export default function Login() {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Contraseña
           </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-            placeholder="••••••••"
-            required
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"} // <--- ALTERNA ENTRE TEXTO Y CONTRASEÑA
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 pr-12 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+              placeholder="••••••••"
+              required
+            />
+            
+            {/* --- BOTÓN DEL OJO --- */}
+            <button
+              type="button" // IMPORTANTE: type="button" para que no envíe el formulario al presionarlo
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
+            >
+              {showPassword ? (
+                <EyeOff size={20} />
+              ) : (
+                <Eye size={20} />
+              )}
+            </button>
+          </div>
         </div>
 
         {error && (
