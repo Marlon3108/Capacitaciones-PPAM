@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
 import { 
   Users, CheckCircle, Clock, AlertTriangle, FileText, Activity, 
-  PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone
+  PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone, RefreshCw
 } from 'lucide-react'
 
 const MetricaCard = ({ titulo, valor, colorFondo, colorIcono }) => (
@@ -143,13 +143,15 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
               : 'Este es el resumen general del departamento de capacitaciones.'}
           </p>
         </div>
-        {/* BOTÓN OPCIONAL DE RECARGA MANUAL */}
-        <button 
+        {/* BOTÓN DE RECARGA MANUAL */}
+        <button
           onClick={fetchDashboardData}
-          className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
-          title="Actualizar datos"
+          disabled={cargando}
+          className="flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 rounded-lg shadow-sm transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Actualizar datos del panel"
         >
-          <Activity size={20} />
+          <RefreshCw size={16} className={`mr-2 ${cargando ? 'animate-spin text-blue-600' : ''}`} />
+          {cargando ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>
 
