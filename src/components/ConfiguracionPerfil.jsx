@@ -216,7 +216,7 @@ export default function ConfiguracionPerfil({ userEmail }) {
           <User className="mr-2 text-gray-600" /> Mi Información
         </h3>
         <div>
-          <label className="block text-sm font-medium text-gray-500">Correo de Acceso</label>
+          <label className="block text-sm font-medium text-gray-500">Nombre de Acceso</label>
           <div className="mt-1 p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 font-medium flex items-center">
             <Mail size={16} className="mr-2 text-gray-400" /> {userEmail}
           </div>
