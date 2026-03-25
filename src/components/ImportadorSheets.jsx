@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { read, utils } from 'xlsx'
-import { UploadCloud, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { UploadCloud, Link as LinkIcon, CheckCircle2, AlertCircle, Loader2, ShieldAlert } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 
 export default function ImportadorSheets() {
@@ -10,11 +10,42 @@ export default function ImportadorSheets() {
   
   const [columnaNombre, setColumnaNombre] = useState('')
   const [columnaCiudad, setColumnaCiudad] = useState('')
-  const [columnaCongregacion, setColumnaCongregacion] = useState('') // NUEVO CAMPO
+  const [columnaCongregacion, setColumnaCongregacion] = useState('')
   
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
+
+  // ESTADOS DE SEGURIDAD
+  const [accesoDenegado, setAccesoDenegado] = useState(false)
+  const [verificandoRol, setVerificandoRol] = useState(true)
+
+  // EFECTO PARA VERIFICAR ROL AL CARGAR LA PÁGINA
+  useEffect(() => {
+    const verificarPermisos = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setVerificandoRol(false)
+        return
+      }
+
+      const { data: userData } = await supabase
+        .from('usuarios')
+        .select('roles(nombre)')
+        .eq('id', session.user.id)
+        .single()
+
+      const rol = userData?.roles?.nombre?.toLowerCase() || ''
+      
+      // Si NO es administrador, le bloqueamos la vista
+      if (rol !== 'administrador') {
+        setAccesoDenegado(true)
+      }
+      setVerificandoRol(false)
+    }
+    
+    verificarPermisos()
+  }, [])
 
   const procesarArchivo = async (file) => {
     if (!file) return
@@ -140,6 +171,23 @@ export default function ImportadorSheets() {
     setCargando(false)
   }
 
+  // PANTALLA DE CARGA MIENTRAS VERIFICA EL ROL
+  if (verificandoRol) {
+    return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin mr-2 text-blue-600" /> Verificando permisos...</div>
+  }
+
+  // PANTALLA DE BLOQUEO SI NO ES ADMINISTRADOR
+  if (accesoDenegado) {
+    return (
+      <div className="bg-red-50 border border-red-200 p-8 rounded-2xl flex flex-col items-center justify-center text-center max-w-md mx-auto mt-10">
+        <ShieldAlert size={48} className="text-red-500 mb-4" />
+        <h2 className="text-xl font-bold text-red-800 mb-2">Acceso Restringido</h2>
+        <p className="text-red-600">No tienes los permisos necesarios para importar bases de datos. Esta acción es exclusiva para Administradores.</p>
+      </div>
+    )
+  }
+
+  // SI ES ADMINISTRADOR, MUESTRA EL COMPONENTE NORMAL
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">

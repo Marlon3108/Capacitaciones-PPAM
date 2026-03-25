@@ -9,16 +9,18 @@ export default function ConfiguracionPerfil({ userEmail }) {
 
   // Estados para el panel de crear usuario
   const [isAdmin, setIsAdmin] = useState(false)
-  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre: '', email: '' })
+  // Añadimos el estado del rol seleccionado. Por defecto será 'capacitador' para que no quede vacío
+  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre: '', email: '', rolNombre: 'capacitador' })
+  // Estado para guardar los roles que traemos de la base de datos
+  const [rolesDisponibles, setRolesDisponibles] = useState([])
 
   useEffect(() => {
-    // Verificar si el usuario actual es administrador o coordinador
-    const checkRole = async () => {
+    const fetchDatosIniciales = async () => {
+      // 1. Verificar si el usuario actual es administrador o coordinador
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
-      // Obtenemos el nombre del rol vinculado a tu usuario
-      const { data, error } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('usuarios')
         .select(`
           rol_id,
@@ -27,18 +29,30 @@ export default function ConfiguracionPerfil({ userEmail }) {
         .eq('id', session.user.id)
         .single()
 
-      if (error) {
-        console.error("Error al buscar rol:", error)
+      if (userError) {
+        console.error("Error al buscar rol:", userError)
         return
       }
       
-      // Validamos en minúsculas por si en tu base de datos está escrito diferente
-      const nombreRol = data?.roles?.nombre?.toLowerCase() || ''
+      const nombreRol = userData?.roles?.nombre?.toLowerCase() || ''
       if (nombreRol === 'administrador' || nombreRol === 'coordinador') {
         setIsAdmin(true)
       }
+
+      // 2. Si es admin/coordinador, traemos la lista de roles para llenar el <select>
+      if (nombreRol === 'administrador' || nombreRol === 'coordinador') {
+        const { data: rolesData, error: rolesError } = await supabase
+          .from('roles')
+          .select('id, nombre')
+          .order('nombre')
+        
+        if (!rolesError && rolesData) {
+          setRolesDisponibles(rolesData)
+        }
+      }
     }
-    checkRole()
+    
+    fetchDatosIniciales()
   }, [])
 
   const handleActualizarPassword = async (e) => {
@@ -66,14 +80,10 @@ export default function ConfiguracionPerfil({ userEmail }) {
     setMensaje(null)
 
     try {
-      // 1. Buscamos cuál es el UUID real del rol 'capacitador' en tu tabla roles
-      const { data: rolData, error: rolError } = await supabase
-        .from('roles')
-        .select('id')
-        .ilike('nombre', 'capacitador') // ilike ignora mayúsculas
-        .single()
-
-      if (rolError) throw new Error("No se encontró el rol 'capacitador' en la base de datos.")
+      // 1. Buscamos el ID exacto del rol que se seleccionó en el formulario
+      const rolSeleccionado = rolesDisponibles.find(r => r.nombre.toLowerCase() === nuevoUsuario.rolNombre.toLowerCase())
+      
+      if (!rolSeleccionado) throw new Error("Rol no válido.")
 
       // 2. Creamos al usuario en Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -83,18 +93,21 @@ export default function ConfiguracionPerfil({ userEmail }) {
 
       if (authError) throw authError
 
-      // 3. Lo insertamos en la tabla pública con el UUID de capacitador correcto
+      // 3. Lo insertamos en la tabla pública con el UUID del rol seleccionado
       if (authData.user) {
         const { error: dbError } = await supabase.from('usuarios').insert([{
           id: authData.user.id,
           nombre_completo: nuevoUsuario.nombre,
-          rol_id: rolData.id // Usamos el ID largo que encontró en tu tabla
+          rol_id: rolSeleccionado.id 
         }])
 
         if (dbError) throw dbError
 
-        setMensaje({ tipo: 'exito', texto: '¡Capacitador creado exitosamente! Puede iniciar sesión con la contraseña: PasswordTemporal123!' })
-        setNuevoUsuario({ nombre: '', email: '' })
+        // Formateamos el nombre del rol para el mensaje (ej: capacitador -> Capacitador)
+        const rolBonito = nuevoUsuario.rolNombre.charAt(0).toUpperCase() + nuevoUsuario.rolNombre.slice(1)
+        
+        setMensaje({ tipo: 'exito', texto: `¡${rolBonito} creado exitosamente! Puede iniciar sesión con la contraseña: PasswordTemporal123!` })
+        setNuevoUsuario({ nombre: '', email: '', rolNombre: 'capacitador' })
       }
     } catch (error) {
       setMensaje({ tipo: 'error', texto: error.message })
@@ -120,13 +133,13 @@ export default function ConfiguracionPerfil({ userEmail }) {
       {/* PANEL EXCLUSIVO PARA ADMINISTRADORES Y COORDINADORES */}
       {isAdmin && (
         <div className="bg-white p-8 rounded-2xl shadow-sm border-2 border-blue-100 relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
-            Panel de Administrador
+          <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg flex items-center">
+            <Shield size={12} className="mr-1" /> Panel de Administración
           </div>
           <h3 className="text-lg font-bold text-gray-800 flex items-center border-b pb-4 mb-6">
-            <UserPlus className="mr-2 text-blue-600" /> Registrar Nuevo Capacitador
+            <UserPlus className="mr-2 text-blue-600" /> Registrar Nuevo Usuario
           </h3>
-          <p className="text-sm text-gray-500 mb-6">El nuevo usuario será asignado automáticamente con el rol de <strong>Capacitador</strong>.</p>
+          <p className="text-sm text-gray-500 mb-6">Crea nuevos accesos y asígnales un nivel de permisos en el sistema.</p>
           
           <form onSubmit={handleInvitarUsuario} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -149,12 +162,35 @@ export default function ConfiguracionPerfil({ userEmail }) {
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div className="md:col-span-2 flex justify-end pt-2 border-t mt-2">
+            
+            {/* NUEVO CAMPO: Selector de Rol */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rol de Acceso *</label>
+              <select
+                required
+                value={nuevoUsuario.rolNombre}
+                onChange={(e) => setNuevoUsuario({...nuevoUsuario, rolNombre: e.target.value})}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              >
+                {rolesDisponibles.map(rol => (
+                  <option key={rol.id} value={rol.nombre.toLowerCase()}>
+                    {rol.nombre.charAt(0).toUpperCase() + rol.nombre.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-2">
+                {nuevoUsuario.rolNombre === 'administrador' ? "Acceso total al sistema y configuraciones." : 
+                 nuevoUsuario.rolNombre === 'coordinador' ? "Puede ver reportes y descargar listas de chequeo." : 
+                 "Solo puede llenar listas de chequeo de sus asignados."}
+              </p>
+            </div>
+
+            <div className="md:col-span-2 flex justify-end pt-2 border-t mt-4">
               <button 
                 type="submit" disabled={loading || !nuevoUsuario.nombre || !nuevoUsuario.email}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center disabled:opacity-50"
               >
-                {loading ? 'Creando...' : <><Save size={18} className="mr-2" /> Crear Capacitador</>}
+                {loading ? 'Creando...' : <><Save size={18} className="mr-2" /> Crear Usuario</>}
               </button>
             </div>
           </form>
