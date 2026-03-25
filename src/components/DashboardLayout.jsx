@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { LogOut, Menu, X, Users, ClipboardList, AlertCircle, LayoutDashboard, Settings, FileSpreadsheet } from 'lucide-react'
+import { LogOut, Menu, X, Users, ClipboardList, AlertCircle, LayoutDashboard, Settings, FileSpreadsheet, FileText } from 'lucide-react'
 import ImportadorSheets from './ImportadorSheets'
 import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
