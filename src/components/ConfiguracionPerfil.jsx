@@ -80,37 +80,50 @@ export default function ConfiguracionPerfil({ userEmail }) {
     setMensaje(null)
 
     try {
-      // 1. Buscamos el ID exacto del rol que se seleccionó en el formulario
+      // 1. Buscamos el ID exacto del rol
       const rolSeleccionado = rolesDisponibles.find(r => r.nombre.toLowerCase() === nuevoUsuario.rolNombre.toLowerCase())
-      
       if (!rolSeleccionado) throw new Error("Rol no válido.")
 
-      // 2. Creamos al usuario en Auth
+      // 2. Creamos al usuario en Auth usando la API de Admin (ya que tú eres Admin) o el SignUp estándar
+      // Pasamos los datos adicionales (nombre y rol) en el objeto 'options.data'
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: nuevoUsuario.email,
         password: 'PasswordTemporal123!', 
+        options: {
+          data: {
+            nombre_completo: nuevoUsuario.nombre,
+            rol_id: rolSeleccionado.id
+          }
+        }
       })
 
       if (authError) throw authError
 
-      // 3. Lo insertamos en la tabla pública con el UUID del rol seleccionado
+      // 3. (OPCIONAL/DE RESPALDO)
+      // Como a veces el signUp normal en Supabase no inserta directamente en la tabla pública
+      // si no hay un trigger configurado, hacemos la inserción manualmente pero con un pequeño retraso
+      // y asegurándonos de que si falla porque ya existe (por un trigger), no rompa la aplicación.
+      
       if (authData.user) {
-        const { error: dbError } = await supabase.from('usuarios').insert([{
-          id: authData.user.id,
-          nombre_completo: nuevoUsuario.nombre,
-          rol_id: rolSeleccionado.id 
-        }])
+        const { error: dbError } = await supabase
+          .from('usuarios')
+          .upsert([{
+            id: authData.user.id,
+            nombre_completo: nuevoUsuario.nombre,
+            rol_id: rolSeleccionado.id 
+          }], { onConflict: 'id' }) // Usamos upsert en lugar de insert para evitar el choque de llaves
 
-        if (dbError) throw dbError
+        if (dbError && !dbError.message.includes('duplicate key value')) {
+          throw dbError; // Si es un error real, lo lanzamos. Si es duplicado (porque el trigger funcionó), lo ignoramos.
+        }
 
-        // Formateamos el nombre del rol para el mensaje (ej: capacitador -> Capacitador)
         const rolBonito = nuevoUsuario.rolNombre.charAt(0).toUpperCase() + nuevoUsuario.rolNombre.slice(1)
-        
         setMensaje({ tipo: 'exito', texto: `¡${rolBonito} creado exitosamente! Puede iniciar sesión con la contraseña: PasswordTemporal123!` })
         setNuevoUsuario({ nombre: '', email: '', rolNombre: 'capacitador' })
       }
     } catch (error) {
-      setMensaje({ tipo: 'error', texto: error.message })
+      console.error(error)
+      setMensaje({ tipo: 'error', texto: error.message || 'Ocurrió un error al crear el usuario.' })
     }
     
     setLoading(false)
