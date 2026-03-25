@@ -3,21 +3,20 @@ import { supabase } from '../supabaseClient'
 import { Users, CheckCircle, Clock, AlertTriangle, FileText, Activity, PauseCircle, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // 1. COMPONENTE EXTRAÍDO AFUERA
-const MetricaCard = ({ titulo, valor, icono, colorFondo, colorIcono }) => {
-  const IconoComponente = icono
-
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center">
-      <div className={`p-4 rounded-full ${colorFondo} mr-4`}>
-        <IconoComponente className={`w-8 h-8 ${colorIcono}`} />
-      </div>
-      <div>
-        <p className="text-gray-500 text-sm font-medium">{titulo}</p>
-        <h3 className="text-3xl font-bold text-gray-800">{valor}</h3>
-      </div>
+const MetricaCard = ({ titulo, valor, icono: Icono, colorFondo, colorIcono }) => (
+  <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+    <div className={`p-3 rounded-xl ${colorFondo} flex-shrink-0 mr-4`}>
+      <Icono size={24} className={colorIcono} />
     </div>
-  )
-}
+    <div className="text-right">
+      <p className="text-sm font-semibold text-gray-500 whitespace-nowrap">{titulo}</p>
+      <p className="text-3xl font-bold text-gray-800 mt-1">{valor}</p>
+    </div>
+  </div>
+)
+
+
+
 
 // 2. FUNCIÓN DE AYUDA EXTRAÍDA AFUERA
 const traducirEstado = (estado) => {
@@ -114,7 +113,7 @@ export default function InicioDashboard({ userName }) {
         <p className="text-gray-500 mt-1">Este es el resumen general del departamento de capacitaciones.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <MetricaCard titulo="Total Evaluados" valor={metricas.total} icono={Users} colorFondo="bg-blue-50" colorIcono="text-blue-600" />
         <MetricaCard titulo="Pendientes" valor={metricas.pendientes} icono={Clock} colorFondo="bg-gray-50" colorIcono="text-gray-600" />
         <MetricaCard titulo="Aprobados" valor={metricas.aprobados} icono={CheckCircle} colorFondo="bg-green-50" colorIcono="text-green-600" />
