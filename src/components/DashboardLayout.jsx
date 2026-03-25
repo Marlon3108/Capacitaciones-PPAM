@@ -8,8 +8,10 @@ import InicioDashboard from './InicioDashboard'
 import ConfiguracionPerfil from './ConfiguracionPerfil'
 import HistorialEvaluaciones from './HistorialEvaluaciones'
 import AsignacionParticipantes from './AsignacionParticipantes'
+import useAutoLogout from './useAutoLogout'
 
 export default function DashboardLayout({ userEmail }) {
+  useAutoLogout()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState('Inicio')
   const [datosEvaluacion, setDatosEvaluacion] = useState(null)
