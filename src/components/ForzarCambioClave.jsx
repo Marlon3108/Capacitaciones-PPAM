@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Save, AlertCircle, CheckCircle, Lock } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle, Lock, Eye, EyeOff } from 'lucide-react' // <-- Agregamos Eye y EyeOff
 
 export default function ForzarCambioClave({ onClaveCambiada }) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false) // <-- Estado para el 1er campo
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false) // <-- Estado para el 2do campo
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState(null)
 
@@ -65,26 +67,51 @@ export default function ForzarCambioClave({ onClaveCambiada }) {
         )}
 
         <form onSubmit={handleUpdatePassword} className="space-y-4 text-left">
+          
+          {/* PRIMER CAMPO: NUEVA CONTRASEÑA */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
-            <input 
-              type="password" required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="Minimo 6 caracteres"
-            />
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Minimo 6 caracteres"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
+
+          {/* SEGUNDO CAMPO: CONFIRMAR CONTRASEÑA */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label>
-            <input 
-              type="password" required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="Repite la contraseña"
-            />
+            <div className="relative">
+              <input 
+                type={showConfirmPassword ? "text" : "password"} 
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Repite la contraseña"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+              >
+                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
+
           <button 
             type="submit" disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all mt-4 flex justify-center items-center disabled:opacity-50"
