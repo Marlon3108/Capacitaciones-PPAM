@@ -100,14 +100,18 @@ export default function DashboardLayout({ userEmail }) {
                     setActiveMenu(item.name)
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center text-left whitespace-nowrap px-4 py-3 rounded-xl transition-colors ${
+                  // Añadimos 'overflow-hidden' al contenedor del botón
+                  className={`w-full flex items-center text-left px-4 py-3 rounded-xl transition-colors overflow-hidden ${
                     isActive 
                       ? 'bg-blue-50 text-blue-700 font-semibold' 
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 >
-                  <Icon size={20} className={`mr-3 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-                  {item.name}
+                  {/* Le añadimos flex-shrink-0 al ícono para que no se aplaste */}
+                  <Icon size={20} className={`flex-shrink-0 mr-3 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
+                  
+                  {/* Envolvemos el texto en un span con truncate para que corte con puntos suspensivos si no cabe */}
+                  <span className="truncate">{item.name}</span>
                 </button>
               )
             })}
