@@ -22,7 +22,6 @@ const PUNTOS_METROPOLITANA = [
 
 export default function FormularioLCCS({ preDatos = null }) {
   const [opcionesParticipantes, setOpcionesParticipantes] = useState([])
-  const [opcionesCapacitadores, setOpcionesCapacitadores] = useState([])
   const [enviando, setEnviando] = useState(false)
   const [hayBorrador, setHayBorrador] = useState(false)
   
@@ -30,57 +29,51 @@ export default function FormularioLCCS({ preDatos = null }) {
   const [errorSuperior, setErrorSuperior] = useState(null)
   
   const [nombreCapacitadorLogueado, setNombreCapacitadorLogueado] = useState('')
-  const [idCapacitadorLogueado, setIdCapacitadorLogueado] = useState(null)
 
-  const { register, handleSubmit, formState: { errors }, reset, setValue, watch, getValues } = useForm()
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm()
   
-  const capacitadorId = watch('capacitador_id')
   const participanteId = watch('participante')
   const puntoMetropolitana = watch('punto')
-
-  // Vigilar TODOS los cambios del formulario para el autoguardado
   const formValues = watch()
 
   // 1. CARGAR DATOS INICIALES Y REVISAR BORRADORES
   useEffect(() => {
     const fetchDatosIniciales = async () => {
+      // 1. SIEMPRE buscar al usuario logueado y fijarlo
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         const { data: usuario } = await supabase.from('usuarios').select('id, nombre_completo').eq('id', session.user.id).single()
         if (usuario) {
           setNombreCapacitadorLogueado(usuario.nombre_completo)
-          setIdCapacitadorLogueado(usuario.id)
+          setValue('capacitador_id', usuario.id) // Fijamos su ID en el form oculto
         }
       }
 
+      // 2. Si no hay preDatos (Entró por el menú libre)
       if (!preDatos) {
         const { data: partData } = await supabase.from('participantes').select('id, nombres_apellidos, codigo_unico').eq('estado', 'pendiente')
         if (partData) setOpcionesParticipantes(partData.map(p => ({ value: p.id, label: `${p.nombres_apellidos} (Cód: ${p.codigo_unico})` })))
-
-        const { data: capData } = await supabase.from('usuarios').select('id, nombre_completo')
-        if (capData) setOpcionesCapacitadores(capData.map(c => ({ value: c.id, label: c.nombre_completo })))
-      } else {
+      } 
+      // 3. Si hay preDatos (Entró por el botón Iniciar Evaluación)
+      else {
         if (preDatos.fecha_programada) {
           const fechaObj = new Date(preDatos.fecha_programada)
           setValue('fecha', fechaObj.toISOString().split('T')[0])
         }
         setValue('punto', preDatos.punto_programado || '')
         setValue('participante', preDatos.id)
-        if (session) setValue('capacitador_id', session.user.id)
 
-        // VERIFICAR SI HAY UN BORRADOR GUARDADO PARA ESTE PARTICIPANTE
+        // Revisar borrador
         const borradorGuardado = localStorage.getItem(`borrador_lccs_${preDatos.id}`)
         if (borradorGuardado) {
           const datosParseados = JSON.parse(borradorGuardado)
-          // Rellenar el formulario con los datos del borrador
           Object.keys(datosParseados).forEach(key => {
-            // No sobreescribir los datos principales de asignación
             if (!['fecha', 'punto', 'participante', 'capacitador_id'].includes(key)) {
               setValue(key, datosParseados[key])
             }
           })
           setHayBorrador(true)
-          setTimeout(() => setHayBorrador(false), 5000) // Ocultar el aviso después de 5 seg
+          setTimeout(() => setHayBorrador(false), 5000)
         }
       }
     }
@@ -88,11 +81,8 @@ export default function FormularioLCCS({ preDatos = null }) {
     fetchDatosIniciales()
   }, [preDatos, setValue])
 
-  // 2. EFECTO PARA GUARDAR BORRADOR CADA VEZ QUE CAMBIA ALGO
   useEffect(() => {
-    // Solo guardamos borrador si hay un participante seleccionado
     if (participanteId && Object.keys(formValues).length > 0) {
-      // Usamos un timeout pequeño para no saturar el localStorage por cada tecla presionada
       const timer = setTimeout(() => {
         localStorage.setItem(`borrador_lccs_${participanteId}`, JSON.stringify(formValues))
       }, 1000)
@@ -126,7 +116,6 @@ export default function FormularioLCCS({ preDatos = null }) {
         .eq('id', data.participante)
       if (errorPart) throw errorPart
 
-      // SI SE ENVÍA CON ÉXITO, BORRAMOS EL BORRADOR
       localStorage.removeItem(`borrador_lccs_${data.participante}`)
       setModalExito(true)
       
@@ -141,14 +130,12 @@ export default function FormularioLCCS({ preDatos = null }) {
     setModalExito(false)
     reset()
     if (!preDatos) {
-      setValue('capacitador_id', null)
       setValue('participante', null)
       setValue('punto', null)
     }
     window.scrollTo(0, 0)
   }
 
-  // --- COMPONENTES VISUALES ---
   const CheckboxItem = ({ name, label }) => (
     <label className="flex items-start cursor-pointer group mb-2">
       <div className="mt-1">
@@ -173,7 +160,6 @@ export default function FormularioLCCS({ preDatos = null }) {
     <>
       <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 shadow-xl border border-gray-200 relative">
         
-        {/* AVISO DE BORRADOR RECUPERADO */}
         {hayBorrador && (
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-full text-sm font-bold flex items-center shadow-md animate-bounce">
             <SaveAll size={16} className="mr-2" /> Se recuperó una evaluación sin terminar
@@ -190,15 +176,14 @@ export default function FormularioLCCS({ preDatos = null }) {
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="text-center mb-6 pt-4">
             <h1 className="text-xl font-bold text-black uppercase">
-              Lista de Chequeo de Capacitación en Sitio del Nuevo Participante (LCCS)
+              Informe de Capacitación del Nuevo Participante
             </h1>
           </div>
 
           <div className="border-2 border-black bg-blue-50/30 p-3 mb-6 text-sm text-justify text-gray-800">
-            <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice la siguiente lista de chequeo como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
+            <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice el siguiente informe como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
           </div>
 
-          {/* ... [EL RESTO DE TU FORMULARIO SE MANTIENE EXACTAMENTE IGUAL] ... */}
           <div className="space-y-4 mb-8">
             <div className="flex flex-col md:flex-row md:items-center">
               <span className="font-bold text-sm w-64 flex items-center">
@@ -216,27 +201,16 @@ export default function FormularioLCCS({ preDatos = null }) {
               </div>
             </div>
             
+            {/* AQUÍ ESTÁ EL CAMBIO DEL CAPACITADOR */}
             <div className="flex flex-col md:flex-row md:items-start pt-1">
               <span className="font-bold text-sm w-64 mt-1 flex items-center">
-                Nombre del capacitador: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
+                Nombre del capacitador: <Lock size={12} className="ml-1 text-gray-400" />
               </span>
               <div className="flex flex-col flex-1">
-                {preDatos ? (
-                  <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
-                    {nombreCapacitadorLogueado}
-                  </div>
-                ) : (
-                  <>
-                    <input type="hidden" {...register('capacitador_id', { required: true })} />
-                    <BuscadorSelect 
-                      opciones={opcionesCapacitadores}
-                      valorSeleccionado={capacitadorId}
-                      alSeleccionar={(val) => setValue('capacitador_id', val, { shouldValidate: true })}
-                      placeholder="-- Buscar Capacitador --"
-                      error={!capacitadorId && errors.capacitador_id}
-                    />
-                  </>
-                )}
+                <input type="hidden" {...register('capacitador_id', { required: true })} />
+                <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
+                  {nombreCapacitadorLogueado || 'Cargando...'}
+                </div>
               </div>
             </div>
 
@@ -373,8 +347,8 @@ export default function FormularioLCCS({ preDatos = null }) {
               <div className="ml-4 mb-6">
                 <CheckboxItem name="informe_1" label="Se le ha informado al participante la decisión" />
                 <CheckboxItem name="informe_2" label="Se le informó al hombre clave y encargado de punto" />
-                <CheckboxItem name="informe_3" label="Se informó al comité de servicio del participante si este requiere una capacitación en 6 meses y que debe llenar nuevamente la solicitud" />
-                <CheckboxItem name="informe_4" label="Se informó al comité de servicio del participante que no fue aprobado." />
+                <CheckboxItem name="informe_3" label="Se informó al comité de servicio del participante que requiere una capacitación en 6 meses y debe llenar nuevamente la solicitud" />
+                <CheckboxItem name="informe_4" label="Se informó al comité de servicio que el participante que no fue aprobado." />
               </div>
             </div>
           </div>
@@ -397,7 +371,7 @@ export default function FormularioLCCS({ preDatos = null }) {
               <CheckCircle className="w-16 h-16 text-green-500" />
             </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Evaluación Guardada!</h2>
-            <p className="text-gray-500 mb-8">La lista de chequeo ha sido enviada con éxito al departamento.</p>
+            <p className="text-gray-500 mb-8">El informe ha sido enviado con éxito al departamento.</p>
             <button onClick={reiniciarFormulario} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors">
               Comenzar nueva evaluación
             </button>

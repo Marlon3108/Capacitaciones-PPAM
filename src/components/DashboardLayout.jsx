@@ -42,10 +42,11 @@ export default function DashboardLayout({ userEmail }) {
   }, [])
 
   // Menú completo. Usamos la propiedad 'rolesPermitidos' para decidir quién lo ve
+  // OJO AQUÍ: El nombre es exactamente 'Informe de Capacitación'
   const menuItemsCompleto = [
     { name: 'Inicio', icon: LayoutDashboard, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
     { name: 'Historial Evaluaciones', icon: FileText, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
-    { name: 'Listas de Chequeo', icon: ClipboardList, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Informe de Capacitación', icon: ClipboardList, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
     { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Importar Sheets', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
@@ -61,26 +62,30 @@ export default function DashboardLayout({ userEmail }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Botón menú móvil */}
-      <button 
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-md"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
+      
       {/* Sidebar (Barra Lateral) */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-full flex flex-col">
-          {/* Logo/Título */}
-          <div className="h-16 flex items-center px-6 border-b border-gray-200">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-              <ClipboardList size={20} className="text-white" />
+        <div className="h-full flex flex-col relative">
+          
+          {/* Logo/Título con botón de cerrar integrado */}
+          <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
+            <div className="flex items-center">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                <ClipboardList size={20} className="text-white" />
+              </div>
+              <span className="text-xl font-bold text-gray-800">LCCS App</span>
             </div>
-            <span className="text-xl font-bold text-gray-800">LCCS App</span>
+            
+            {/* BOTÓN X DENTRO DEL SIDEBAR */}
+            <button 
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-md"
+            >
+              <X size={20} />
+            </button>
           </div>
 
           {/* Menú de Navegación */}
@@ -95,7 +100,7 @@ export default function DashboardLayout({ userEmail }) {
                     setActiveMenu(item.name)
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors ${
+                  className={`w-full flex items-center text-left whitespace-nowrap px-4 py-3 rounded-xl transition-colors ${
                     isActive 
                       ? 'bg-blue-50 text-blue-700 font-semibold' 
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -129,14 +134,21 @@ export default function DashboardLayout({ userEmail }) {
 
       {/* Área Principal de Contenido */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
-          <h1 className="text-xl font-semibold text-gray-800 pl-10 lg:pl-0">{activeMenu}</h1>
+        {/* HEADER MODIFICADO PARA INCLUIR EL BOTÓN DE HAMBURGUESA */}
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-8">
+          <button 
+            className="lg:hidden p-2 mr-4 text-gray-600 hover:bg-gray-100 rounded-md"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={24} />
+          </button>
+          <h1 className="text-xl font-semibold text-gray-800">{activeMenu}</h1>
         </header>
 
         <div className="flex-1 overflow-auto p-8 bg-slate-50">
           <div className="max-w-[1400px] mx-auto h-full">
+            {/* OJO AQUÍ: Comparamos exactamente con 'Informe de Capacitación' */}
             {activeMenu === 'Inicio' ? (
-              // 1. CAMBIAMOS setActiveMenu POR handleCambioPestana
               <InicioDashboard userName={userEmail} setPestanaActiva={handleCambioPestana} />
             ) : activeMenu === 'Historial Evaluaciones' ? (
               <HistorialEvaluaciones />
@@ -144,14 +156,16 @@ export default function DashboardLayout({ userEmail }) {
               <TableroParticipantes />
             ) : activeMenu === 'Programación' ? (
               <AsignacionParticipantes />
-            ) : activeMenu === 'Listas de Chequeo' ? (
+            ) : activeMenu === 'Informe de Capacitación' ? (
               <FormularioLCCS preDatos={datosEvaluacion} />
             ) : activeMenu === 'Importar Sheets' ? (
               <ImportadorSheets />
             ) : activeMenu === 'Configuración' ? (
               <ConfiguracionPerfil userEmail={userEmail} />
             ) : (
-              <div className="bg-white rounded-2xl p-8 text-center">Módulo no encontrado</div>
+              <div className="bg-white rounded-2xl p-8 text-center">
+                Módulo no encontrado: "{activeMenu}"
+              </div>
             )}
           </div>
         </div>

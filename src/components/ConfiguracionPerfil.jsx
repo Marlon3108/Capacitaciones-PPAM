@@ -193,8 +193,8 @@ export default function ConfiguracionPerfil({ userEmail }) {
               </select>
               <p className="text-xs text-gray-500 mt-2">
                 {nuevoUsuario.rolNombre === 'administrador' ? "Acceso total al sistema y configuraciones." : 
-                 nuevoUsuario.rolNombre === 'coordinador' ? "Puede ver reportes y descargar listas de chequeo." : 
-                 "Solo puede llenar listas de chequeo de sus asignados."}
+                 nuevoUsuario.rolNombre === 'coordinador' ? "Puede ver reportes y descargar los informes de capacitación." : 
+                 "Solo puede llenar el informe de capacitación de sus asignados."}
               </p>
             </div>
 

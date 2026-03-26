@@ -153,7 +153,7 @@ export default function HistorialEvaluaciones() {
         </head>
         <body>
           <div class="header">
-            <h1 class="title">Lista de Chequeo LCCS</h1>
+            <h1 class="title">Informe de Capacitación LCCS</h1>
             <p class="subtitle">Programa de Predicación Pública en Áreas Metropolitanas</p>
           </div>
 
@@ -240,7 +240,7 @@ export default function HistorialEvaluaciones() {
         <p className="text-gray-500 mt-1">
           {rolUsuario === 'capacitador' 
             ? 'Consulta y descarga los resultados de las personas que has evaluado.' 
-            : 'Consulta y visualiza los resultados detallados de todas las listas de chequeo.'}
+            : 'Consulta y visualiza los resultados detallados de todas los informes de capacitación.'}
         </p>
       </div>
 

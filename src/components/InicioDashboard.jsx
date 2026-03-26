@@ -5,7 +5,7 @@ import {
   PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone, RefreshCw
 } from 'lucide-react'
 
-const MetricaCard = ({ titulo, valor, colorFondo, colorIcono }) => (
+const MetricaCard = ({ titulo, valor, icono: Icono,colorFondo, colorIcono }) => (
   <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
     <div className={`p-3 rounded-xl ${colorFondo} flex-shrink-0 mr-4`}>
       <Icono size={24} className={colorIcono} />
@@ -226,10 +226,10 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                     </div>
                     
                     <button 
-                      onClick={() => setPestanaActiva && setPestanaActiva('Listas de Chequeo', asig)}
+                      onClick={() => setPestanaActiva && setPestanaActiva('Informe de Capacitación', asig)}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors"
                     >
-                      <FileText size={18} className="mr-2" /> Iniciar Evaluación
+                      <FileText size={18} className="mr-2" /> Llenar Informe
                     </button>
                   </div>
                 ))}
