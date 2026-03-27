@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { UserPlus, Search, Shield, CheckCircle, Clock, Loader2, AlertCircle, X, User, FileText, Edit2, Archive, ArchiveRestore } from 'lucide-react'
+import { UserPlus, Search, Shield, CheckCircle, Clock, Loader2, AlertCircle, X, User, FileText, Edit2, Archive, ArchiveRestore, RefreshCw } from 'lucide-react'
 
 export default function CapacitadoresList() {
   const [capacitadores, setCapacitadores] = useState([])
@@ -17,6 +17,9 @@ export default function CapacitadoresList() {
   const [listaDetalle, setListaDetalle] = useState([])
   const [cargandoDetalle, setCargandoDetalle] = useState(false)
   const [busquedaDetalle, setBusquedaDetalle] = useState('')
+  
+  // NUEVO: Estado para procesar reasignaciones dentro del modal
+  const [reasignando, setReasignando] = useState(null)
 
   const [nuevoCap, setNuevoCap] = useState({ nombre_completo: '', email: '', password: '' })
 
@@ -24,12 +27,11 @@ export default function CapacitadoresList() {
   const [nombreEditado, setNombreEditado] = useState('')
   const [procesandoAccion, setProcesandoAccion] = useState(false)
 
-  // NUEVO ESTADO: Para el Modal de Confirmación
   const [modalConfirmacion, setModalConfirmacion] = useState({
     abierto: false,
     titulo: '',
     mensaje: '',
-    tipo: 'alerta', // 'alerta' (solo OK), 'confirmar_archivar', 'confirmar_reactivar'
+    tipo: 'alerta',
     capacitador: null
   })
 
@@ -172,13 +174,12 @@ export default function CapacitadoresList() {
     }
   }
 
-  // LOGICA PARA ABRIR MODAL DE CONFIRMACIÓN
   const intentarArchivar = (cap) => {
     if (cap.pendientes > 0) {
       setModalConfirmacion({
         abierto: true,
         titulo: 'No se puede archivar',
-        mensaje: `No puedes archivar a ${cap.nombre_completo} porque tiene ${cap.pendientes} personas pendientes por evaluar. Reasigna esas personas a otro capacitador primero.`,
+        mensaje: `No puedes archivar a ${cap.nombre_completo} porque tiene ${cap.pendientes} personas pendientes por evaluar.\n\nPara solucionarlo, haz clic en la tarjeta de sus "Pendientes" y reasígnalos a otro capacitador.`,
         tipo: 'alerta',
         capacitador: cap
       })
@@ -203,7 +204,6 @@ export default function CapacitadoresList() {
     })
   }
 
-  // ACCIONES REALES EN LA BASE DE DATOS
   const ejecutarAccionConfirmada = async () => {
     setProcesandoAccion(true)
     const cap = modalConfirmacion.capacitador
@@ -264,6 +264,44 @@ export default function CapacitadoresList() {
     }
   }
 
+  // NUEVA FUNCIÓN: Reasignar Participante directamente desde el modal
+  const handleReasignar = async (participanteId, nuevoCapacitadorId) => {
+    if (!nuevoCapacitadorId) return;
+    
+    setReasignando(participanteId);
+
+    try {
+      const { error } = await supabase
+        .from('participantes')
+        .update({ capacitador_id: nuevoCapacitadorId })
+        .eq('id', participanteId);
+
+      if (error) throw error;
+
+      // Actualizar la lista del modal (quitar al reasignado)
+      setListaDetalle(prev => prev.filter(p => p.id !== participanteId));
+
+      // Actualizar los contadores visuales en el fondo sin recargar todo
+      setCapacitadores(prev => prev.map(c => {
+        // Restar 1 al actual
+        if (c.id === modalDetalle.capacitador.id) {
+          return { ...c, pendientes: Math.max(0, c.pendientes - 1) }
+        }
+        // Sumar 1 al nuevo
+        if (c.id === nuevoCapacitadorId) {
+          return { ...c, pendientes: c.pendientes + 1 }
+        }
+        return c;
+      }));
+
+    } catch (error) {
+      console.error("Error al reasignar:", error);
+      alert("Hubo un error al intentar reasignar al participante.");
+    } finally {
+      setReasignando(null);
+    }
+  }
+
   const capacitadoresFiltrados = capacitadores.filter(c => {
     const coincideTexto = c.nombre_completo?.toLowerCase().includes(busqueda.toLowerCase());
     const coincideEstado = verArchivados ? c.activo === false : c.activo === true;
@@ -276,6 +314,14 @@ export default function CapacitadoresList() {
     return nombre?.toLowerCase().includes(termino)
   })
 
+  // Lista de capacitadores activos a los que se puede reasignar
+  // Se excluye al capacitador actual
+  const opcionesReasignacion = capacitadores.filter(c => 
+    c.activo && c.id !== modalDetalle.capacitador?.id
+  )
+
+  const puedeModificar = rolUsuarioActual === 'administrador' || rolUsuarioActual === 'coordinador';
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -284,7 +330,7 @@ export default function CapacitadoresList() {
           <p className="text-gray-500 text-sm mt-1">Gestiona el personal y revisa su carga de trabajo.</p>
         </div>
         
-        {(rolUsuarioActual === 'administrador' || rolUsuarioActual === 'coordinador') && (
+        {puedeModificar && (
           <button 
             onClick={() => setMostrarModal(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-medium transition-colors flex items-center shadow-sm"
@@ -459,7 +505,7 @@ export default function CapacitadoresList() {
         </div>
       )}
 
-      {/* MODAL DETALLES DE PARTICIPANTES */}
+      {/* MODAL DETALLES DE PARTICIPANTES (AHORA CON OPCIÓN DE REASIGNAR) */}
       {modalDetalle.abierto && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
@@ -476,7 +522,7 @@ export default function CapacitadoresList() {
               </button>
             </div>
 
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4 border-b border-gray-100 bg-white">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                 <input 
@@ -489,7 +535,7 @@ export default function CapacitadoresList() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-2 bg-gray-50/30">
               {cargandoDetalle ? (
                 <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-blue-500" size={30} /></div>
               ) : listaDetalleFiltrada.length === 0 ? (
@@ -497,30 +543,56 @@ export default function CapacitadoresList() {
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {listaDetalleFiltrada.map((item, idx) => (
-                    <li key={item.id || idx} className="p-4 hover:bg-gray-50 transition-colors">
+                    <li key={item.id || idx} className="p-4 hover:bg-white transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       {modalDetalle.tipo === 'pendientes' ? (
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-800">{item.nombres_apellidos}</span>
-                          <span className="text-sm text-gray-500">{item.congregacion}</span>
-                          <div className="mt-2 flex gap-2">
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-md">{item.punto_programado || 'Sin punto asignado'}</span>
-                            <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-md">
-                              {item.fecha_programada ? new Date(item.fecha_programada).toLocaleDateString() : 'Sin fecha'}
-                            </span>
+                        <>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-800">{item.nombres_apellidos}</span>
+                            <span className="text-sm text-gray-500">{item.congregacion}</span>
+                            <div className="mt-2 flex gap-2">
+                              <span className="text-[11px] font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">{item.punto_programado || 'Sin punto asignado'}</span>
+                              <span className="text-[11px] font-medium bg-gray-100 text-gray-800 px-2 py-0.5 rounded-md">
+                                {item.fecha_programada ? new Date(item.fecha_programada).toLocaleDateString() : 'Sin fecha'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
+
+                          {/* SELECTOR PARA REASIGNAR (SOLO PARA PENDIENTES Y SI ES ADMIN/COORD) */}
+                          {puedeModificar && (
+                            <div className="min-w-[180px]">
+                              {reasignando === item.id ? (
+                                <div className="text-xs text-blue-600 flex items-center bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                                  <RefreshCw size={12} className="animate-spin mr-1.5" /> Reasignando...
+                                </div>
+                              ) : (
+                                <select 
+                                  onChange={(e) => handleReasignar(item.id, e.target.value)}
+                                  className="w-full text-xs p-2 border border-gray-200 rounded-lg bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                                  defaultValue=""
+                                >
+                                  <option value="" disabled>Reasignar a...</option>
+                                  {opcionesReasignacion.map(cap => (
+                                    <option key={cap.id} value={cap.id}>
+                                      {cap.nombre_completo}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </>
                       ) : (
-                        <div className="flex flex-col">
+                        <div className="flex flex-col w-full">
                           <span className="font-bold text-gray-800">{item.participantes?.nombres_apellidos}</span>
                           <div className="flex items-center text-sm text-gray-500 mt-1">
                             <FileText size={14} className="mr-1" />
                             <span>Punto: {item.punto_metropolitana}</span>
                           </div>
                           <div className="mt-2 flex justify-between items-center">
-                            <span className="text-xs font-semibold uppercase px-2 py-1 rounded-md bg-green-100 text-green-800">
+                            <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md bg-green-100 text-green-800">
                               {item.resultado_aprobacion === 'aprobado' ? 'Aprobado' : item.resultado_aprobacion.replace('_', ' ')}
                             </span>
-                            <span className="text-xs text-gray-400">{new Date(item.creado_en).toLocaleDateString()}</span>
+                            <span className="text-xs text-gray-400 font-medium">{new Date(item.creado_en).toLocaleDateString()}</span>
                           </div>
                         </div>
                       )}
