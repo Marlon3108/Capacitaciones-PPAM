@@ -8,6 +8,7 @@ import InicioDashboard from './InicioDashboard'
 import ConfiguracionPerfil from './ConfiguracionPerfil'
 import HistorialEvaluaciones from './HistorialEvaluaciones'
 import AsignacionParticipantes from './AsignacionParticipantes'
+import CapacitadoresList from './CapacitadoresList'
 import useAutoLogout from './useAutoLogout'
 
 export default function DashboardLayout({ userEmail }) {
@@ -162,10 +163,7 @@ export default function DashboardLayout({ userEmail }) {
             ) : activeMenu === 'Programación' ? (
               <AsignacionParticipantes />
             ) : activeMenu === 'Capacitadores' ? (
-              <div className="bg-white rounded-2xl p-8 text-center">
-                <h2 className="text-xl font-bold mb-4">Gestión de Capacitadores</h2>
-                <p>Módulo en construcción...</p>
-              </div>
+              <CapacitadoresList />
             )  : activeMenu === 'Informe de Capacitación' ? (
               <FormularioLCCS preDatos={datosEvaluacion} />
             ) : activeMenu === 'Importar Sheets' ? (
