@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity, UserCheck } from 'lucide-react'
-import ImportadorSheets from './ImportadorSheets'
+import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity, UserCheck, QrCode} from 'lucide-react'
+import GestorNuevosParticipantes from './GestorNuevosParticipantes';
 import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
 import InicioDashboard from './InicioDashboard'
@@ -9,6 +9,7 @@ import ConfiguracionPerfil from './ConfiguracionPerfil'
 import HistorialEvaluaciones from './HistorialEvaluaciones'
 import AsignacionParticipantes from './AsignacionParticipantes'
 import CapacitadoresList from './CapacitadoresList'
+import GeneradorInvitacionQR from './GeneradorInvitacionQR';
 import useAutoLogout from './useAutoLogout'
 
 export default function DashboardLayout({ userEmail }) {
@@ -51,7 +52,8 @@ export default function DashboardLayout({ userEmail }) {
     { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Capacitadores', icon: UserCheck, rolesPermitidos: ['administrador', 'coordinador'] },
-    { name: 'Importar Sheets', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
+    { name: 'Invitaciones QR', icon: QrCode, rolesPermitidos: ['administrador', 'coordinador'] },
+    { name: 'Nuevos Participantes', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
     { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
   ]
 
@@ -164,10 +166,12 @@ export default function DashboardLayout({ userEmail }) {
               <AsignacionParticipantes />
             ) : activeMenu === 'Capacitadores' ? (
               <CapacitadoresList />
-            )  : activeMenu === 'Informe de Capacitación' ? (
+            ) : activeMenu === 'Invitaciones QR' ? (
+              <GeneradorInvitacionQR />
+            ): activeMenu === 'Informe de Capacitación' ? (
               <FormularioLCCS preDatos={datosEvaluacion} />
-            ) : activeMenu === 'Importar Sheets' ? (
-              <ImportadorSheets />
+            ) : activeMenu === 'Nuevos Participantes' ? (
+              <GestorNuevosParticipantes />
             ) : activeMenu === 'Configuración' ? (
               <ConfiguracionPerfil userEmail={userEmail} />
             ) : (
