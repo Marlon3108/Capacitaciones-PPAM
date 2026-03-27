@@ -51,9 +51,12 @@ export default function HistorialEvaluaciones() {
   const [cargando, setCargando] = useState(true)
   const [accesoDenegado, setAccesoDenegado] = useState(false)
   const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState(null)
+  
   const [busqueda, setBusqueda] = useState('')
+  const [filtroCategoria, setFiltroCategoria] = useState('todas') // NUEVO ESTADO PARA EL FILTRO
   const [paginaActual, setPaginaActual] = useState(1)
-  const [rolUsuario, setRolUsuario] = useState('') // <--- AÑADIDO PARA EL TÍTULO
+  const [rolUsuario, setRolUsuario] = useState('') 
+  
   const itemsPorPagina = 10
 
   useEffect(() => {
@@ -68,26 +71,24 @@ export default function HistorialEvaluaciones() {
         .single()
 
       const rol = userData?.roles?.nombre?.toLowerCase() || ''
-      setRolUsuario(rol) // Guardamos el rol
+      setRolUsuario(rol)
 
-      // 1. AHORA PERMITIMOS QUE EL CAPACITADOR TAMBIÉN PASE ESTE FILTRO
       if (rol !== 'administrador' && rol !== 'coordinador' && rol !== 'superintendente' && rol !== 'capacitador') {
         setAccesoDenegado(true)
         setCargando(false)
         return
       }
 
-      // 2. CONSTRUIMOS LA CONSULTA
+      // Añadimos "categoria" a la consulta de participantes
       let query = supabase
         .from('evaluaciones_lccs')
         .select(`
           *,
-          participantes(nombres_apellidos, congregacion, ciudad),
+          participantes(nombres_apellidos, congregacion, ciudad, categoria),
           usuarios(nombre_completo)
         `)
         .order('creado_en', { ascending: false })
 
-      // 3. SI ES CAPACITADOR, SOLO TRAE LAS SUYAS
       if (rol === 'capacitador') {
         query = query.eq('capacitador_id', session.user.id)
       }
@@ -103,7 +104,15 @@ export default function HistorialEvaluaciones() {
 
   const evaluacionesFiltradas = useMemo(() => {
     if (!evaluaciones) return []
-    return evaluaciones.filter(ev => {
+    
+    // Primero filtramos por categoría
+    let filtradas = evaluaciones;
+    if (filtroCategoria !== 'todas') {
+      filtradas = filtradas.filter(ev => ev.participantes?.categoria === filtroCategoria);
+    }
+
+    // Luego aplicamos la búsqueda por texto
+    return filtradas.filter(ev => {
       const termino = busqueda.toLowerCase()
       const participante = (ev.participantes?.nombres_apellidos || '').toLowerCase()
       const capacitador = (ev.usuarios?.nombre_completo || '').toLowerCase()
@@ -117,7 +126,7 @@ export default function HistorialEvaluaciones() {
              congregacion.includes(termino) ||
              ciudad.includes(termino)
     })
-  }, [evaluaciones, busqueda])
+  }, [evaluaciones, busqueda, filtroCategoria]) // Añadimos filtroCategoria a las dependencias
 
   const totalPaginas = Math.ceil(evaluacionesFiltradas.length / itemsPorPagina)
   const evaluacionesPaginadas = evaluacionesFiltradas.slice(
@@ -233,7 +242,6 @@ export default function HistorialEvaluaciones() {
   return (
     <div className="space-y-6 pb-10 relative">
       <div>
-        {/* Título dinámico según el rol */}
         <h1 className="text-3xl font-bold text-gray-800">
           {rolUsuario === 'capacitador' ? 'Mis Evaluaciones Realizadas' : 'Historial de Evaluaciones'}
         </h1>
@@ -245,20 +253,53 @@ export default function HistorialEvaluaciones() {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Buscar por nombre, congregación, ciudad, punto..." 
-              value={busqueda}
-              onChange={manejarBusqueda}
-              className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-            />
+        {/* BARRA DE FILTROS SUPERIOR */}
+        <div className="p-6 border-b border-gray-100 flex flex-col gap-4 bg-slate-50">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Buscar por nombre, congregación, ciudad, punto..." 
+                value={busqueda}
+                onChange={manejarBusqueda}
+                className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+              />
+            </div>
+            <div className="text-sm text-gray-500 font-medium">
+              Total: {evaluacionesFiltradas.length} registros
+            </div>
           </div>
-          <div className="text-sm text-gray-500 font-medium">
-            Total: {evaluacionesFiltradas.length} registros
+
+          {/* BOTONES DE FILTRO DE CATEGORÍA */}
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button 
+              onClick={() => { setFiltroCategoria('todas'); setPaginaActual(1); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'todas' ? 'bg-slate-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            >
+              Todos
+            </button>
+            <button 
+              onClick={() => { setFiltroCategoria('nuevo'); setPaginaActual(1); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'nuevo' ? 'bg-emerald-600 text-white shadow' : 'bg-white border border-gray-200 text-emerald-700 hover:bg-emerald-50'}`}
+            >
+              Nuevos
+            </button>
+            <button 
+              onClick={() => { setFiltroCategoria('viejo_sin_punto'); setPaginaActual(1); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_sin_punto' ? 'bg-amber-500 text-white shadow' : 'bg-white border border-gray-200 text-amber-700 hover:bg-amber-50'}`}
+            >
+              Antiguos Sin Punto
+            </button>
+            <button 
+              onClick={() => { setFiltroCategoria('viejo_punto_fijo'); setPaginaActual(1); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_punto_fijo' ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-indigo-700 hover:bg-indigo-50'}`}
+            >
+              Antiguos Con Punto
+            </button>
           </div>
+
         </div>
 
         <div className="overflow-x-auto">
@@ -283,13 +324,33 @@ export default function HistorialEvaluaciones() {
               ) : (
                 evaluacionesPaginadas.map(ev => {
                   const est = traducirEstado(ev.resultado_aprobacion)
+                  
+                  // Lógica para badge de categoría en la tabla
+                  const cat = ev.participantes?.categoria;
+                  let bgBadge = "bg-gray-100 text-gray-700 border-gray-200";
+                  let textoBadge = "No especificado";
+
+                  if (cat === 'nuevo') {
+                    bgBadge = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                    textoBadge = "NUEVO";
+                  } else if (cat === 'viejo_sin_punto') {
+                    bgBadge = "bg-amber-50 text-amber-700 border-amber-200";
+                    textoBadge = "ANTIGUO SIN PUNTO";
+                  } else if (cat === 'viejo_punto_fijo') {
+                    bgBadge = "bg-indigo-50 text-indigo-700 border-indigo-200";
+                    textoBadge = "ANTIGUO CON PUNTO";
+                  }
+
                   return (
                     <tr key={ev.id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-4 text-gray-600 font-medium">
                         {new Date(ev.creado_en).toLocaleDateString()}
                       </td>
-                      <td className="p-4 font-bold text-gray-800">
-                        {ev.participantes?.nombres_apellidos}
+                      <td className="p-4">
+                        <div className="font-bold text-gray-800">{ev.participantes?.nombres_apellidos}</div>
+                        <span className={`inline-block mt-1 border ${bgBadge} text-[9px] font-bold px-1.5 py-0.5 rounded uppercase`}>
+                          {textoBadge}
+                        </span>
                       </td>
                       <td className="p-4">
                         <div className="text-gray-800">{ev.punto_metropolitana}</div>
