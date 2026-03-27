@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity } from 'lucide-react'
+import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity, UserCheck } from 'lucide-react'
 import ImportadorSheets from './ImportadorSheets'
 import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
@@ -49,6 +49,7 @@ export default function DashboardLayout({ userEmail }) {
     { name: 'Informe de Capacitación', icon: ClipboardList, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
     { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
+    { name: 'Capacitadores', icon: UserCheck, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Importar Sheets', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
     { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
   ]
@@ -76,7 +77,7 @@ export default function DashboardLayout({ userEmail }) {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
                 <ClipboardList size={20} className="text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-800">LCCS App</span>
+              <span className="text-xl font-bold text-gray-800">DC APP</span>
             </div>
             
             {/* BOTÓN X DENTRO DEL SIDEBAR */}
@@ -160,7 +161,12 @@ export default function DashboardLayout({ userEmail }) {
               <TableroParticipantes />
             ) : activeMenu === 'Programación' ? (
               <AsignacionParticipantes />
-            ) : activeMenu === 'Informe de Capacitación' ? (
+            ) : activeMenu === 'Capacitadores' ? (
+              <div className="bg-white rounded-2xl p-8 text-center">
+                <h2 className="text-xl font-bold mb-4">Gestión de Capacitadores</h2>
+                <p>Módulo en construcción...</p>
+              </div>
+            )  : activeMenu === 'Informe de Capacitación' ? (
               <FormularioLCCS preDatos={datosEvaluacion} />
             ) : activeMenu === 'Importar Sheets' ? (
               <ImportadorSheets />

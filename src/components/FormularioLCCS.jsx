@@ -5,19 +5,19 @@ import { Save, AlertCircle, CheckCircle, Loader2, Lock, SaveAll } from 'lucide-r
 import BuscadorSelect from './BuscadorSelect'
 
 const PUNTOS_METROPOLITANA = [
-  { value: 'Cali- AVIANCA', label: 'Cali- AVIANCA (Alexander Castro)' },
-  { value: 'Cali- BUITRERA', label: 'Cali- BUITRERA (Marlon Cano/ Andrés Abadía)' },
-  { value: 'Cali- CANCHAS PANAMERICANAS', label: 'Cali- CANCHAS PANAMERICANAS (Daniel Torres/ Orlando)' },
-  { value: 'Cali- CARRERA OCTAVA', label: 'Cali- CARRERA OCTAVA (Jeisson Gómez)' },
-  { value: 'Cali- CAM', label: 'Cali- CAM (Alexander Castro)' },
-  { value: 'Cali- GOBERNACIÓN DEL VALLE', label: 'Cali- GOBERNACIÓN DEL VALLE (Jose Luis Castillo)' },
-  { value: 'Cali- IMBANACO', label: 'Cali- IMBANACO (Daniel Torres/ Orlando)' },
-  { value: 'Cali- LA 14 CALIMA', label: 'Cali- LA 14 CALIMA (José Eduardo Ortega)' },
-  { value: 'Cali- PLAZA CAYZEDO', label: 'Cali- PLAZA CAYZEDO (Jose Luis Castillo)' },
-  { value: 'Jamundí', label: 'Jamundí (Edgar Pérez/ John Armijo)' },
-  { value: 'Palmira- BOLIVAR', label: 'Palmira- BOLIVAR (Juan David Moncada)' },
-  { value: 'Palmira- LA FACTORÍA', label: 'Palmira- LA FACTORÍA (Juan David Moncada)' },
-  { value: 'Yumbo', label: 'Yumbo (Sebastián Redondo/ Juan Esteban)' }
+  { value: 'Cali- AVIANCA', label: 'Cali- AVIANCA' },
+  { value: 'Cali- BUITRERA', label: 'Cali- BUITRERA' },
+  { value: 'Cali- CANCHAS PANAMERICANAS', label: 'Cali- CANCHAS PANAMERICANAS' },
+  { value: 'Cali- CARRERA OCTAVA', label: 'Cali- CARRERA OCTAVA' },
+  { value: 'Cali- CAM', label: 'Cali- CAM' },
+  { value: 'Cali- GOBERNACIÓN DEL VALLE', label: 'Cali- GOBERNACIÓN DEL VALLE' },
+  { value: 'Cali- IMBANACO', label: 'Cali- IMBANACO' },
+  { value: 'Cali- LA 14 CALIMA', label: 'Cali- LA 14 CALIMA' },
+  { value: 'Cali- PLAZA CAYZEDO', label: 'Cali- PLAZA CAYZEDO' },
+  { value: 'Jamundí', label: 'Jamundí' },
+  { value: 'Palmira- BOLIVAR', label: 'Palmira- BOLIVAR' },
+  { value: 'Palmira- LA FACTORÍA', label: 'Palmira- LA FACTORÍA' },
+  { value: 'Yumbo', label: 'Yumbo' }
 ]
 
 export default function FormularioLCCS({ preDatos = null }) {
