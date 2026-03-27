@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
-import { Search, ChevronLeft, ChevronRight, Activity, ShieldAlert, Download, Eye, X, CheckCircle2, XCircle } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Activity, ShieldAlert, Download, Eye, X, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react'
 
 // Diccionario exacto basado en la LCCS - PPAM Oficial
 const diccionarioPreguntas = {
@@ -53,7 +53,7 @@ export default function HistorialEvaluaciones() {
   const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState(null)
   
   const [busqueda, setBusqueda] = useState('')
-  const [filtroCategoria, setFiltroCategoria] = useState('todas') // NUEVO ESTADO PARA EL FILTRO
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
   const [paginaActual, setPaginaActual] = useState(1)
   const [rolUsuario, setRolUsuario] = useState('') 
   
@@ -79,7 +79,6 @@ export default function HistorialEvaluaciones() {
         return
       }
 
-      // Añadimos "categoria" a la consulta de participantes
       let query = supabase
         .from('evaluaciones_lccs')
         .select(`
@@ -105,13 +104,11 @@ export default function HistorialEvaluaciones() {
   const evaluacionesFiltradas = useMemo(() => {
     if (!evaluaciones) return []
     
-    // Primero filtramos por categoría
     let filtradas = evaluaciones;
     if (filtroCategoria !== 'todas') {
       filtradas = filtradas.filter(ev => ev.participantes?.categoria === filtroCategoria);
     }
 
-    // Luego aplicamos la búsqueda por texto
     return filtradas.filter(ev => {
       const termino = busqueda.toLowerCase()
       const participante = (ev.participantes?.nombres_apellidos || '').toLowerCase()
@@ -126,7 +123,7 @@ export default function HistorialEvaluaciones() {
              congregacion.includes(termino) ||
              ciudad.includes(termino)
     })
-  }, [evaluaciones, busqueda, filtroCategoria]) // Añadimos filtroCategoria a las dependencias
+  }, [evaluaciones, busqueda, filtroCategoria])
 
   const totalPaginas = Math.ceil(evaluacionesFiltradas.length / itemsPorPagina)
   const evaluacionesPaginadas = evaluacionesFiltradas.slice(
@@ -138,6 +135,68 @@ export default function HistorialEvaluaciones() {
     setBusqueda(e.target.value)
     setPaginaActual(1)
   }
+
+  // === NUEVA FUNCIÓN: EXPORTAR A CSV ===
+  const exportarCSV = () => {
+    if (evaluacionesFiltradas.length === 0) return;
+
+    // 1. Definir los encabezados (puedes agregar más si necesitas)
+    const encabezados = [
+      "Fecha Evaluacion",
+      "Participante",
+      "Categoria",
+      "Ciudad",
+      "Congregacion",
+      "Punto Metropolitano",
+      "Capacitador",
+      "Resultado Final",
+      "Tipo Capacitacion",
+      "Observaciones"
+    ];
+
+    // 2. Mapear los datos fila por fila
+    const filas = evaluacionesFiltradas.map(ev => {
+      // Función auxiliar para limpiar textos (comas, saltos de línea) para el CSV
+      const limpiar = (texto) => {
+        if (!texto) return '""';
+        return `"${texto.toString().replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+      };
+
+      let categoria = ev.participantes?.categoria || 'No especificada';
+      if (categoria === 'nuevo') categoria = 'NUEVO';
+      else if (categoria === 'viejo_sin_punto') categoria = 'ANTIGUO SIN PUNTO';
+      else if (categoria === 'viejo_punto_fijo') categoria = 'ANTIGUO CON PUNTO';
+
+      return [
+        limpiar(new Date(ev.creado_en).toLocaleDateString()),
+        limpiar(ev.participantes?.nombres_apellidos),
+        limpiar(categoria),
+        limpiar(ev.participantes?.ciudad),
+        limpiar(ev.participantes?.congregacion),
+        limpiar(ev.punto_metropolitana),
+        limpiar(ev.usuarios?.nombre_completo),
+        limpiar(traducirEstado(ev.resultado_aprobacion).texto),
+        limpiar(ev.tipo_capacitacion),
+        limpiar(ev.observaciones_finales)
+      ].join(',');
+    });
+
+    // 3. Unir encabezados y filas
+    const contenidoCSV = [encabezados.join(','), ...filas].join('\n');
+
+    // 4. Crear el archivo y forzar la descarga
+    // El BOM (\uFEFF) ayuda a Excel a leer correctamente las tildes y caracteres especiales en UTF-8
+    const blob = new Blob(['\uFEFF' + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Historial_Evaluaciones_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const generarPDF = (ev) => {
     let htmlContent = `
@@ -241,15 +300,28 @@ export default function HistorialEvaluaciones() {
 
   return (
     <div className="space-y-6 pb-10 relative">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">
-          {rolUsuario === 'capacitador' ? 'Mis Evaluaciones Realizadas' : 'Historial de Evaluaciones'}
-        </h1>
-        <p className="text-gray-500 mt-1">
-          {rolUsuario === 'capacitador' 
-            ? 'Consulta y descarga los resultados de las personas que has evaluado.' 
-            : 'Consulta y visualiza los resultados detallados de todas los informes de capacitación.'}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">
+            {rolUsuario === 'capacitador' ? 'Mis Evaluaciones Realizadas' : 'Historial de Evaluaciones'}
+          </h1>
+          <p className="text-gray-500 mt-1">
+            {rolUsuario === 'capacitador' 
+              ? 'Consulta y descarga los resultados de las personas que has evaluado.' 
+              : 'Consulta y visualiza los resultados detallados de todas los informes de capacitación.'}
+          </p>
+        </div>
+
+        {/* BOTÓN DE EXPORTACIÓN GENERAL */}
+        {evaluacionesFiltradas.length > 0 && (
+          <button
+            onClick={exportarCSV}
+            className="flex items-center justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-colors font-medium text-sm"
+          >
+            <FileSpreadsheet size={18} className="mr-2" />
+            Exportar a Excel (CSV)
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -325,7 +397,6 @@ export default function HistorialEvaluaciones() {
                 evaluacionesPaginadas.map(ev => {
                   const est = traducirEstado(ev.resultado_aprobacion)
                   
-                  // Lógica para badge de categoría en la tabla
                   const cat = ev.participantes?.categoria;
                   let bgBadge = "bg-gray-100 text-gray-700 border-gray-200";
                   let textoBadge = "No especificado";
