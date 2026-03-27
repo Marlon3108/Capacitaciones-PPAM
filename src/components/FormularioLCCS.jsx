@@ -347,7 +347,7 @@ export default function FormularioLCCS({ preDatos = null }) {
               <div className="ml-4 mb-6">
                 <CheckboxItem name="informe_1" label="Se le ha informado al participante la decisión" />
                 <CheckboxItem name="informe_2" label="Se le informó al hombre clave y encargado de punto" />
-                <CheckboxItem name="informe_3" label="Se informó al comité de servicio del participante que requiere una capacitación en 6 meses y debe llenar nuevamente la solicitud" />
+                <CheckboxItem name="informe_3" label="Se informó al comité de servicio de la congregación del participante que debe llenar nuevamente la solicitud en 6 meses" />
                 <CheckboxItem name="informe_4" label="Se informó al comité de servicio que el participante que no fue aprobado." />
               </div>
             </div>
