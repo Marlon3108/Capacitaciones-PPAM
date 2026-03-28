@@ -130,7 +130,7 @@ export default function GestorNuevosParticipantes() {
     try {
       const { data: existentes, error: errorFetch } = await supabase
         .from('participantes')
-        .select('id, nombres_apellidos, ciudad, congregacion, codigounico, estado, telefono, categoria, punto_fijo');
+        .select('id, nombres_apellidos, ciudad, congregacion, codigo_unico, estado, telefono, categoria, punto_fijo');
 
       if (errorFetch) throw errorFetch;
 
@@ -151,7 +151,7 @@ export default function GestorNuevosParticipantes() {
           prioridadExcel = (val === 'TRUE' || val === 'VERDADERO' || val === 'SI' || val === '1');
         }
 
-        let categoriaCalculada = 'nuevo_orientacion';
+        let categoriaCalculada = 'nuevo';
         let puntoFijoCalculado = null;
 
         if (tipoImportacion === 'antiguos') {
@@ -183,13 +183,13 @@ export default function GestorNuevosParticipantes() {
               es_prioridad: prioridadExcel,
               categoria: categoriaCalculada,
               punto_fijo: puntoFijoCalculado,
-              codigounico: pExistente.codigounico, 
+              codigo_unico: pExistente.codigo_unico, 
               estado: pExistente.estado 
             });
           }
         } else {
           nuevosAInsertar.push({
-            codigounico: generarCodigoUnico(),
+            codigo_unico: generarCodigoUnico(),
             nombres_apellidos: nombreExcel,
             ciudad: ciudadExcel,
             congregacion: congregacionExcel,
@@ -262,7 +262,7 @@ export default function GestorNuevosParticipantes() {
         return;
       }
 
-      let categoriaCalculada = 'nuevo_orientacion';
+      let categoriaCalculada = 'nuevo';
       let puntoFijoCalculado = null;
 
       if (manualTipo === 'antiguos') {
@@ -283,7 +283,7 @@ export default function GestorNuevosParticipantes() {
         categoria: categoriaCalculada,
         punto_fijo: puntoFijoCalculado,
         estado: 'pendiente',
-        codigounico: generarCodigoUnico()
+        codigo_unico: generarCodigoUnico()
       };
 
       const { error } = await supabase.from('participantes').insert([nuevoRegistro]);
