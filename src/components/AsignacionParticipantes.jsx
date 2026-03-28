@@ -58,10 +58,15 @@ export default function AsignacionParticipantes() {
     if (capacitadores.length === 0) {
       const { data: capData } = await supabase
         .from('usuarios')
-        .select('id, nombre_completo, roles!inner(nombre)')
-        .order('nombre_completo')
-
-      if (capData) setCapacitadores(capData)
+        .select('id, nombre_completo, activo, roles!inner(nombre)')
+        .eq('activo', true)
+        .order('nombre_completo');
+        
+      if (capData) {
+        // CORRECCIÓN: Filtramos usando nombre_completo (con guión bajo), tal como viene de la DB
+        const validos = capData.filter(c => c.nombre_completo && c.nombre_completo.trim() !== '');
+        setCapacitadores(validos);
+      }
     }
     
     setCargando(false)

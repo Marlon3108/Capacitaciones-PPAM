@@ -106,7 +106,7 @@ export default function CapacitadoresList() {
       const { data: rolData, error: rolError } = await supabase
         .from('roles')
         .select('id')
-        .eq('nombre', 'capacitador')
+        .ilike('nombre', 'capacitador')
         .single()
         
       if (rolError) throw new Error("No se encontró el rol de capacitador.")
@@ -205,29 +205,30 @@ export default function CapacitadoresList() {
   }
 
   const ejecutarAccionConfirmada = async () => {
-    setProcesandoAccion(true)
-    const cap = modalConfirmacion.capacitador
-    const activando = modalConfirmacion.tipo === 'confirmar_reactivar'
+    setProcesandoAccion(true);
+    const cap = modalConfirmacion.capacitador;
+    const activando = modalConfirmacion.tipo === 'confirmar_reactivar';
 
     try {
       const { error } = await supabase
         .from('usuarios')
         .update({ activo: activando })
-        .eq('id', cap.id)
+        .eq('id', cap.id);
 
-      if (error) throw error
+      if (error) throw error;
 
-      setCapacitadores(prev => prev.map(c => 
-        c.id === cap.id ? { ...c, activo: activando } : c
-      ))
-      
-      setModalConfirmacion({ abierto: false, titulo: '', mensaje: '', tipo: 'alerta', capacitador: null })
+      // AÑADIMOS ESTO PARA QUE SE RECARGUE EN TIEMPO REAL
+      await cargarCapacitadores();
+
+      setModalConfirmacion({ abierto: false, titulo: '', mensaje: '', tipo: 'alerta', capacitador: null });
     } catch (error) {
-      console.error("Error en la acción:", error)
+      console.error('Error en la acción:', error);
+      // Añadimos una alerta para que sepas si Supabase está bloqueando el cambio
+      alert('Error al intentar archivar/reactivar. Revisa los permisos de la base de datos (RLS).');
     } finally {
-      setProcesandoAccion(false)
+      setProcesandoAccion(false);
     }
-  }
+  };
 
   const abrirDetalle = async (cap, tipo) => {
     setModalDetalle({ abierto: true, tipo, capacitador: cap })
@@ -317,8 +318,8 @@ export default function CapacitadoresList() {
   // Lista de capacitadores activos a los que se puede reasignar
   // Se excluye al capacitador actual
   const opcionesReasignacion = capacitadores.filter(c => 
-    c.activo && c.id !== modalDetalle.capacitador?.id
-  )
+  c.activo === true && c.id !== modalDetalle.capacitador?.id
+  );
 
   const puedeModificar = rolUsuarioActual === 'administrador' || rolUsuarioActual === 'coordinador';
 
