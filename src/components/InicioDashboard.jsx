@@ -90,10 +90,10 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
     } else {
       const { data: asigData } = await supabase
         .from('participantes')
-        .select('id, nombres_apellidos, congregacion, fechaprogramada, puntoprogramado, telefono, categoria, estado')
+        .select('id, nombres_apellidos, congregacion, fecha_programada, punto_programado, telefono, categoria, estado')
         .eq('capacitador_id', session.user.id)
         .in('estado', ['pendiente', 'requiere_refuerzo', 'repetir_6_meses'])
-        .order('fechaprogramada', { ascending: true })
+        .order('fecha_programada', { ascending: true })
 
       if (asigData) setMisAsignaciones(asigData)
     }
