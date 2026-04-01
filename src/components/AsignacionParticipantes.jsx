@@ -255,31 +255,29 @@ export default function AsignacionParticipantes() {
           </div>
           
           <div className="flex flex-wrap gap-3">
-            {/* Filtro por Categorías */}
-            <div className="flex bg-gray-50 p-1 rounded-xl items-center border border-gray-100">
-              <Filter size={14} className="text-gray-400 mx-2" />
+            {/* Filtro por Categorías (Estilo Píldoras LCCS) */}
+            <div className="flex flex-wrap gap-2 mt-2">
               <button 
                 onClick={() => setFiltroCategoria('todos')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filtroCategoria === 'todos' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'todos' ? 'bg-slate-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
               >
                 Todos
               </button>
               <button 
                 onClick={() => setFiltroCategoria('nuevo')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filtroCategoria === 'nuevo' ? 'bg-white shadow-sm text-green-700' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'nuevo' ? 'bg-emerald-600 text-white shadow' : 'bg-white border border-gray-200 text-emerald-700 hover:bg-emerald-50'}`}
               >
                 Nuevos
               </button>
-              {/* BOTÓN FALTANTE AGREGADO AQUÍ */}
               <button 
                 onClick={() => setFiltroCategoria('viejo_sin_punto')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filtroCategoria === 'viejo_sin_punto' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_sin_punto' ? 'bg-amber-500 text-white shadow' : 'bg-white border border-gray-200 text-amber-700 hover:bg-amber-50'}`}
               >
                 Antiguos Sin Punto
               </button>
               <button 
                 onClick={() => setFiltroCategoria('viejo_punto_fijo')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filtroCategoria === 'viejo_punto_fijo' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_punto_fijo' ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-indigo-700 hover:bg-indigo-50'}`}
               >
                 Antiguos Con Punto
               </button>
