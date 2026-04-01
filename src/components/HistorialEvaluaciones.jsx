@@ -1,6 +1,26 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
-import { Search, ChevronLeft, ChevronRight, Activity, ShieldAlert, Download, Eye, X, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react'
+import { 
+  Search, ChevronLeft, ChevronRight, Activity, ShieldAlert, Download, 
+  Eye, X, CheckCircle2, XCircle, FileSpreadsheet, MapPin, AlertTriangle, Loader2 
+} from 'lucide-react'
+
+// Puntos fijos de PPAM
+const PUNTOS_METROPOLITANA = [
+  'Cali- AVIANCA',
+  'Cali- BUITRERA',
+  'Cali- CANCHAS PANAMERICANAS',
+  'Cali- CARRERA OCTAVA',
+  'Cali- CAM',
+  'Cali- GOBERNACIÓN DEL VALLE',
+  'Cali- IMBANACO',
+  'Cali- LA 14 CALIMA',
+  'Cali- PLAZA CAYZEDO',
+  'Jamundí',
+  'Palmira- BOLIVAR',
+  'Palmira- LA FACTORÍA',
+  'Yumbo'
+];
 
 // Diccionario exacto basado en la LCCS - PPAM Oficial
 const diccionarioPreguntas = {
@@ -56,6 +76,10 @@ export default function HistorialEvaluaciones() {
   const [filtroCategoria, setFiltroCategoria] = useState('todas')
   const [paginaActual, setPaginaActual] = useState(1)
   const [rolUsuario, setRolUsuario] = useState('') 
+
+  // NUEVOS ESTADOS PARA ASIGNAR/REMOVER TURNO FIJO
+  const [modalTurno, setModalTurno] = useState({ abierto: false, tipo: null, evaluacion: null, puntoSeleccionado: '' })
+  const [guardandoTurno, setGuardandoTurno] = useState(false)
   
   const itemsPorPagina = 10
 
@@ -83,7 +107,7 @@ export default function HistorialEvaluaciones() {
         .from('evaluaciones_lccs')
         .select(`
           *,
-          participantes(nombres_apellidos, congregacion, ciudad, categoria),
+          participantes(id, nombres_apellidos, congregacion, ciudad, categoria, punto_fijo),
           usuarios(nombre_completo)
         `)
         .order('creado_en', { ascending: false })
@@ -136,27 +160,67 @@ export default function HistorialEvaluaciones() {
     setPaginaActual(1)
   }
 
-  // === NUEVA FUNCIÓN: EXPORTAR A CSV ===
+  // === LÓGICA PARA POPUP DE ASIGNACIÓN DE TURNO ===
+  const abrirModalTurno = (ev) => {
+    const tieneTurno = !!ev.participantes?.punto_fijo;
+    setModalTurno({
+      abierto: true,
+      tipo: tieneTurno ? 'remover' : 'asignar',
+      evaluacion: ev,
+      puntoSeleccionado: tieneTurno ? ev.participantes.punto_fijo : ''
+    });
+  };
+
+  const confirmarCambioTurno = async () => {
+    setGuardandoTurno(true);
+    const { evaluacion, tipo, puntoSeleccionado } = modalTurno;
+    const nuevoPunto = tipo === 'asignar' ? puntoSeleccionado : null;
+
+    // Actualizamos al participante en la BD
+    const { error } = await supabase
+      .from('participantes')
+      .update({ punto_fijo: nuevoPunto })
+      .eq('id', evaluacion.participante_id);
+
+    if (!error) {
+      // Actualizamos el estado local en TODAS las evaluaciones de ese participante
+      setEvaluaciones(prev => prev.map(item => {
+        if (item.participante_id === evaluacion.participante_id) {
+          return {
+            ...item,
+            participantes: { ...item.participantes, punto_fijo: nuevoPunto }
+          };
+        }
+        return item;
+      }));
+      setModalTurno({ abierto: false, tipo: null, evaluacion: null, puntoSeleccionado: '' });
+    } else {
+      console.error("Error al actualizar el turno:", error);
+      alert("Hubo un error al actualizar el turno del participante.");
+    }
+    setGuardandoTurno(false);
+  };
+
+  // === FUNCIÓN: EXPORTAR A CSV ===
   const exportarCSV = () => {
     if (evaluacionesFiltradas.length === 0) return;
 
-    // 1. Definir los encabezados (puedes agregar más si necesitas)
     const encabezados = [
       "Fecha Evaluacion",
       "Participante",
       "Categoria",
       "Ciudad",
       "Congregacion",
-      "Punto Metropolitano",
+      "Punto Metropolitano (Donde Evaluó)",
       "Capacitador",
+      "Turno Asignado",
+      "Punto Asignado",
       "Resultado Final",
       "Tipo Capacitacion",
       "Observaciones"
     ];
 
-    // 2. Mapear los datos fila por fila
     const filas = evaluacionesFiltradas.map(ev => {
-      // Función auxiliar para limpiar textos (comas, saltos de línea) para el CSV
       const limpiar = (texto) => {
         if (!texto) return '""';
         return `"${texto.toString().replace(/"/g, '""').replace(/\n/g, ' ')}"`;
@@ -167,6 +231,9 @@ export default function HistorialEvaluaciones() {
       else if (categoria === 'viejo_sin_punto') categoria = 'ANTIGUO SIN PUNTO';
       else if (categoria === 'viejo_punto_fijo') categoria = 'ANTIGUO CON PUNTO';
 
+      const tieneTurnoStr = ev.participantes?.punto_fijo ? 'SÍ' : 'NO';
+      const puntoFijoStr = ev.participantes?.punto_fijo || 'Sin asignar';
+
       return [
         limpiar(new Date(ev.creado_en).toLocaleDateString()),
         limpiar(ev.participantes?.nombres_apellidos),
@@ -175,17 +242,15 @@ export default function HistorialEvaluaciones() {
         limpiar(ev.participantes?.congregacion),
         limpiar(ev.punto_metropolitana),
         limpiar(ev.usuarios?.nombre_completo),
+        limpiar(tieneTurnoStr),
+        limpiar(puntoFijoStr),
         limpiar(traducirEstado(ev.resultado_aprobacion).texto),
         limpiar(ev.tipo_capacitacion),
         limpiar(ev.observaciones_finales)
       ].join(',');
     });
 
-    // 3. Unir encabezados y filas
     const contenidoCSV = [encabezados.join(','), ...filas].join('\n');
-
-    // 4. Crear el archivo y forzar la descarga
-    // El BOM (\uFEFF) ayuda a Excel a leer correctamente las tildes y caracteres especiales en UTF-8
     const blob = new Blob(['\uFEFF' + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -312,7 +377,6 @@ export default function HistorialEvaluaciones() {
           </p>
         </div>
 
-        {/* BOTÓN DE EXPORTACIÓN GENERAL */}
         {evaluacionesFiltradas.length > 0 && (
           <button
             onClick={exportarCSV}
@@ -344,7 +408,6 @@ export default function HistorialEvaluaciones() {
             </div>
           </div>
 
-          {/* BOTONES DE FILTRO DE CATEGORÍA */}
           <div className="flex flex-wrap gap-2 mt-2">
             <button 
               onClick={() => { setFiltroCategoria('todas'); setPaginaActual(1); }}
@@ -375,13 +438,15 @@ export default function HistorialEvaluaciones() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-white text-gray-500 text-sm border-b border-gray-100">
                 <th className="p-4 font-semibold">Fecha</th>
                 <th className="p-4 font-semibold">Participante</th>
                 <th className="p-4 font-semibold">Detalles</th>
                 {rolUsuario !== 'capacitador' && <th className="p-4 font-semibold">Capacitador</th>}
+                <th className="p-4 font-semibold text-center">Turno Asignado</th>
+                <th className="p-4 font-semibold">Punto Asignado</th>
                 <th className="p-4 font-semibold">Resultado</th>
                 <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
@@ -389,15 +454,15 @@ export default function HistorialEvaluaciones() {
             <tbody className="text-sm divide-y divide-gray-100">
               {evaluacionesPaginadas.length === 0 ? (
                 <tr>
-                  <td colSpan={rolUsuario === 'capacitador' ? 5 : 6} className="p-8 text-center text-gray-500">
+                  <td colSpan={rolUsuario === 'capacitador' ? 7 : 8} className="p-8 text-center text-gray-500">
                     No se encontraron evaluaciones con esos criterios.
                   </td>
                 </tr>
               ) : (
                 evaluacionesPaginadas.map(ev => {
                   const est = traducirEstado(ev.resultado_aprobacion)
-                  
                   const cat = ev.participantes?.categoria;
+                  
                   let bgBadge = "bg-gray-100 text-gray-700 border-gray-200";
                   let textoBadge = "No especificado";
 
@@ -412,26 +477,51 @@ export default function HistorialEvaluaciones() {
                     textoBadge = "ANTIGUO CON PUNTO";
                   }
 
+                  const tienePuntoFijo = !!ev.participantes?.punto_fijo;
+
                   return (
                     <tr key={ev.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="p-4 text-gray-600 font-medium">
+                      <td className="p-4 text-gray-600 font-medium whitespace-nowrap">
                         {new Date(ev.creado_en).toLocaleDateString()}
                       </td>
-                      <td className="p-4">
+                      <td className="p-4 min-w-[200px]">
                         <div className="font-bold text-gray-800">{ev.participantes?.nombres_apellidos}</div>
                         <span className={`inline-block mt-1 border ${bgBadge} text-[9px] font-bold px-1.5 py-0.5 rounded uppercase`}>
                           {textoBadge}
                         </span>
                       </td>
-                      <td className="p-4">
-                        <div className="text-gray-800">{ev.punto_metropolitana}</div>
+                      <td className="p-4 min-w-[150px]">
+                        <div className="text-gray-800 text-xs font-semibold bg-gray-100 px-2 py-1 rounded w-fit">{ev.punto_metropolitana}</div>
                         <div className="text-xs text-gray-500 mt-1">{ev.participantes?.ciudad} • {ev.participantes?.congregacion}</div>
                       </td>
                       {rolUsuario !== 'capacitador' && (
-                        <td className="p-4 text-gray-600">{ev.usuarios?.nombre_completo}</td>
+                        <td className="p-4 text-gray-600 min-w-[150px]">{ev.usuarios?.nombre_completo}</td>
                       )}
+                      <td className="p-4 text-center">
+                        <div className="flex justify-center">
+                          <input 
+                            type="checkbox" 
+                            checked={tienePuntoFijo}
+                            onChange={() => abrirModalTurno(ev)}
+                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer shadow-sm"
+                            title="Haz clic para asignar o quitar un turno fijo"
+                          />
+                        </div>
+                      </td>
+                      <td className="p-4 min-w-[180px]">
+                        {tienePuntoFijo ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <MapPin size={12} className="mr-1.5" />
+                            {ev.participantes.punto_fijo}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                            Sin asignar
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4">
-                        <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${est.color}`}>
+                        <span className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${est.color}`}>
                           {est.texto}
                         </span>
                       </td>
@@ -487,7 +577,66 @@ export default function HistorialEvaluaciones() {
         )}
       </div>
 
-      {/* POPUP DE VISUALIZACIÓN EN PANTALLA */}
+      {/* ==============================================
+          POPUP DE ASIGNACIÓN/REANUDACIÓN DE TURNO FIJO 
+          ============================================== */}
+      {modalTurno.abierto && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              {/* Icono animado y distintivo arriba */}
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${modalTurno.tipo === 'asignar' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                {modalTurno.tipo === 'asignar' ? <MapPin size={32} /> : <AlertTriangle size={32} />}
+              </div>
+              
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {modalTurno.tipo === 'asignar' ? '¿Asignar Turno Fijo?' : '¿Remover Turno Fijo?'}
+              </h3>
+              
+              <p className="text-sm text-gray-500 mb-6">
+                {modalTurno.tipo === 'asignar' 
+                  ? `¿Está seguro/a que a ${modalTurno.evaluacion.participantes?.nombres_apellidos} ya se le asignó turno?`
+                  : `¿Está seguro de que ${modalTurno.evaluacion.participantes?.nombres_apellidos} ya no cuenta con un turno fijo?`
+                }
+              </p>
+
+              {modalTurno.tipo === 'asignar' && (
+                <div className="text-left mb-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Seleccione el punto asignado:</label>
+                  <select 
+                    value={modalTurno.puntoSeleccionado}
+                    onChange={(e) => setModalTurno({...modalTurno, puntoSeleccionado: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                  >
+                    <option value="" disabled>-- Escoge un Punto --</option>
+                    {PUNTOS_METROPOLITANA.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-2">
+                <button 
+                  onClick={() => setModalTurno({ abierto: false, tipo: null, evaluacion: null, puntoSeleccionado: '' })}
+                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmarCambioTurno}
+                  disabled={guardandoTurno || (modalTurno.tipo === 'asignar' && !modalTurno.puntoSeleccionado)}
+                  className={`flex-1 px-4 py-3 text-white font-bold rounded-xl transition-colors flex items-center justify-center disabled:opacity-50 ${modalTurno.tipo === 'asignar' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+                >
+                  {guardandoTurno ? <Loader2 size={18} className="animate-spin" /> : 'Sí, continuar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP DE VISUALIZACIÓN EN PANTALLA (DETALLES DEL CHECKLIST) */}
       {evaluacionSeleccionada && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
