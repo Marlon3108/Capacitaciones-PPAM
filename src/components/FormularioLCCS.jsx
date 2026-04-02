@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '../supabaseClient'
-import { Save, AlertCircle, CheckCircle, Loader2, Lock, SaveAll } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle, Loader2, Lock, SaveAll, Edit } from 'lucide-react'
 import BuscadorSelect from './BuscadorSelect'
 
 const PUNTOS_METROPOLITANA = [
@@ -20,7 +20,7 @@ const PUNTOS_METROPOLITANA = [
   { value: 'Yumbo', label: 'Yumbo' }
 ]
 
-export default function FormularioLCCS({ preDatos = null }) {
+export default function FormularioLCCS({ preDatos = null, setPestanaActiva }) {
   const [opcionesParticipantes, setOpcionesParticipantes] = useState([])
   const [enviando, setEnviando] = useState(false)
   const [hayBorrador, setHayBorrador] = useState(false)
@@ -29,6 +29,7 @@ export default function FormularioLCCS({ preDatos = null }) {
   const [errorSuperior, setErrorSuperior] = useState(null)
   
   const [nombreCapacitadorLogueado, setNombreCapacitadorLogueado] = useState('')
+  const [evaluacionIdEdicion, setEvaluacionIdEdicion] = useState(null)
 
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm()
   
@@ -36,44 +37,61 @@ export default function FormularioLCCS({ preDatos = null }) {
   const puntoMetropolitana = watch('punto')
   const formValues = watch()
 
-  // 1. CARGAR DATOS INICIALES Y REVISAR BORRADORES
   useEffect(() => {
     const fetchDatosIniciales = async () => {
-      // 1. SIEMPRE buscar al usuario logueado y fijarlo
       const { data: { session } } = await supabase.auth.getSession()
+      
+      let nombreUsuarioApp = '';
       if (session) {
         const { data: usuario } = await supabase.from('usuarios').select('id, nombre_completo').eq('id', session.user.id).single()
         if (usuario) {
-          setNombreCapacitadorLogueado(usuario.nombre_completo)
-          setValue('capacitador_id', usuario.id) // Fijamos su ID en el form oculto
+          nombreUsuarioApp = usuario.nombre_completo;
+          setNombreCapacitadorLogueado(nombreUsuarioApp)
+          // SOLO fijamos el ID del capacitador si NO estamos editando
+          if (!preDatos || !preDatos.id) {
+            setValue('capacitador_id', usuario.id) 
+          }
         }
       }
 
-      // 2. Si no hay preDatos (Entró por el menú libre)
       if (!preDatos) {
         const { data: partData } = await supabase.from('participantes').select('id, nombres_apellidos, codigo_unico').eq('estado', 'pendiente')
         if (partData) setOpcionesParticipantes(partData.map(p => ({ value: p.id, label: `${p.nombres_apellidos} (Cód: ${p.codigo_unico})` })))
       } 
-      // 3. Si hay preDatos (Entró por el botón Iniciar Evaluación)
       else {
-        if (preDatos.fecha_programada) {
-          const fechaObj = new Date(preDatos.fecha_programada)
-          setValue('fecha', fechaObj.toISOString().split('T')[0])
-        }
-        setValue('punto', preDatos.punto_programado || '')
-        setValue('participante', preDatos.id)
-
-        // Revisar borrador
-        const borradorGuardado = localStorage.getItem(`borrador_lccs_${preDatos.id}`)
-        if (borradorGuardado) {
-          const datosParseados = JSON.parse(borradorGuardado)
-          Object.keys(datosParseados).forEach(key => {
-            if (!['fecha', 'punto', 'participante', 'capacitador_id'].includes(key)) {
-              setValue(key, datosParseados[key])
+        // MODO EDICIÓN
+        if (preDatos.respuestas && preDatos.participantes) {
+          setEvaluacionIdEdicion(preDatos.id) 
+          setValue('capacitador_id', preDatos.capacitador_id) // CONSERVA EL ORIGINAL
+          setValue('participante', preDatos.participante_id)
+          setValue('punto', preDatos.punto_metropolitana)
+          setValue('fecha', preDatos.fecha_capacitacion || preDatos.creado_en.split('T')[0])
+          setValue('tipoCapacitacion', preDatos.tipo_capacitacion)
+          setValue('resultadoAprobacion', preDatos.resultado_aprobacion)
+          setValue('observaciones', preDatos.observaciones_finales || '')
+          
+          Object.keys(preDatos.respuestas).forEach(key => {
+            if (!['fecha', 'punto', 'participante', 'capacitador_id', 'tipoCapacitacion', 'resultadoAprobacion', 'observaciones'].includes(key)) {
+              setValue(key, preDatos.respuestas[key])
             }
           })
-          setHayBorrador(true)
-          setTimeout(() => setHayBorrador(false), 5000)
+        } 
+        // MODO NUEVO DESDE ASIGNACIÓN
+        else {
+          setValue('punto', preDatos.punto_programado || '')
+          setValue('participante', preDatos.id)
+
+          const borradorGuardado = localStorage.getItem(`borrador_lccs_${preDatos.id}`)
+          if (borradorGuardado) {
+            const datosParseados = JSON.parse(borradorGuardado)
+            Object.keys(datosParseados).forEach(key => {
+              if (!['fecha', 'punto', 'participante', 'capacitador_id'].includes(key)) {
+                setValue(key, datosParseados[key])
+              }
+            })
+            setHayBorrador(true)
+            setTimeout(() => setHayBorrador(false), 5000)
+          }
         }
       }
     }
@@ -82,13 +100,13 @@ export default function FormularioLCCS({ preDatos = null }) {
   }, [preDatos, setValue])
 
   useEffect(() => {
-    if (participanteId && Object.keys(formValues).length > 0) {
+    if (participanteId && Object.keys(formValues).length > 0 && !evaluacionIdEdicion) {
       const timer = setTimeout(() => {
         localStorage.setItem(`borrador_lccs_${participanteId}`, JSON.stringify(formValues))
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [formValues, participanteId])
+  }, [formValues, participanteId, evaluacionIdEdicion])
 
   const onSubmit = async (data) => {
     if (!data.capacitador_id || !data.participante || !data.punto) return
@@ -96,9 +114,8 @@ export default function FormularioLCCS({ preDatos = null }) {
     setEnviando(true)
     setErrorSuperior(null)
     
-    const evaluacion = {
+    const baseEvaluacion = {
       participante_id: data.participante,
-      capacitador_id: data.capacitador_id,
       punto_metropolitana: data.punto,
       tipo_capacitacion: data.tipoCapacitacion,
       fecha_capacitacion: data.fecha,
@@ -108,12 +125,30 @@ export default function FormularioLCCS({ preDatos = null }) {
     }
 
     try {
-      const { error: errorEval } = await supabase.from('evaluaciones_lccs').insert([evaluacion])
-      if (errorEval) throw errorEval
+      if (evaluacionIdEdicion) {
+        // MODO EDICIÓN
+        const { error: errorEval } = await supabase
+          .from('evaluaciones_lccs')
+          .update({
+            ...baseEvaluacion,
+            capacitador_id: data.capacitador_id, // Mantiene el original
+            editor_nombre: nombreCapacitadorLogueado, // Registra quién editó
+            fecha_edicion: new Date().toISOString() // Registra cuándo se editó
+          })
+          .eq('id', evaluacionIdEdicion)
+          
+        if (errorEval) throw errorEval
+      } else {
+        // MODO NUEVO
+        const evaluacionNueva = { ...baseEvaluacion, capacitador_id: data.capacitador_id }
+        const { error: errorEval } = await supabase.from('evaluaciones_lccs').insert([evaluacionNueva])
+        if (errorEval) throw errorEval
+      }
 
       const { error: errorPart } = await supabase.from('participantes')
         .update({ estado: data.resultadoAprobacion || 'evaluado' })
         .eq('id', data.participante)
+        
       if (errorPart) throw errorPart
 
       localStorage.removeItem(`borrador_lccs_${data.participante}`)
@@ -128,6 +163,20 @@ export default function FormularioLCCS({ preDatos = null }) {
 
   const reiniciarFormulario = () => {
     setModalExito(false)
+    
+    if (evaluacionIdEdicion) {
+      // SI ESTÁBAMOS EDITANDO, VOLVEMOS AL HISTORIAL
+      if (typeof setPestanaActiva === 'function') {
+        setPestanaActiva('Historial Evaluaciones');
+      } else {
+        console.error("No se recibió la función setPestanaActiva");
+        // Plan B por si no se pasa la función correctamente
+        window.location.reload();
+      }
+      return; // <-- Este return es clave para que no siga ejecutando el código de abajo
+    }
+    
+    // Lo de abajo SOLO se ejecuta si NO estamos editando
     reset()
     if (!preDatos) {
       setValue('participante', null)
@@ -156,11 +205,21 @@ export default function FormularioLCCS({ preDatos = null }) {
 
   const inputPDFClass = "w-full bg-blue-100/50 border border-gray-400 px-2 py-1 text-sm outline-none focus:bg-blue-100 focus:border-blue-600"
 
+  const nombreMostrarParticipante = preDatos?.participantes?.nombres_apellidos || preDatos?.nombres_apellidos;
+  const fechaMostrarAsignacion = preDatos?.participantes?.fecha_programada || preDatos?.fecha_programada;
+  const nombreCapacitadorOriginal = preDatos?.usuarios?.nombre_completo || nombreCapacitadorLogueado;
+
   return (
     <>
       <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 shadow-xl border border-gray-200 relative">
         
-        {hayBorrador && (
+        {evaluacionIdEdicion && (
+          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-100 border border-blue-300 text-blue-800 px-6 py-2 rounded-full text-sm font-bold flex items-center shadow-md">
+            <Edit size={16} className="mr-2" /> MODO EDICIÓN DE EVALUACIÓN
+          </div>
+        )}
+
+        {hayBorrador && !evaluacionIdEdicion && (
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-full text-sm font-bold flex items-center shadow-md animate-bounce">
             <SaveAll size={16} className="mr-2" /> Se recuperó una evaluación sin terminar
           </div>
@@ -168,8 +227,7 @@ export default function FormularioLCCS({ preDatos = null }) {
 
         {errorSuperior && (
           <div className="p-4 mb-6 rounded flex items-center bg-red-50 text-red-700">
-            <AlertCircle className="w-5 h-5 mr-2"/>
-            Error de conexión: {errorSuperior}
+            <AlertCircle className="w-5 h-5 mr-2"/> Error de conexión: {errorSuperior}
           </div>
         )}
 
@@ -180,28 +238,38 @@ export default function FormularioLCCS({ preDatos = null }) {
             </h1>
           </div>
 
-          <div className="border-2 border-black bg-blue-50/30 p-3 mb-6 text-sm text-justify text-gray-800">
-            <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice el siguiente informe como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
-          </div>
+          {!evaluacionIdEdicion && (
+            <div className="border-2 border-black bg-blue-50/30 p-3 mb-6 text-sm text-justify text-gray-800">
+              <strong>Nota al capacitador:</strong> Antes de iniciar la capacitación en sitio lea <em>Guía para los Capacitadores de la Metropolitana</em>. Utilice el siguiente informe como apoyo durante todo el proceso de capacitación de los nuevos participantes y marque cada casilla conforme se vaya realizando. En el recuadro "observaciones finales" escriba los aspectos que requieren mejora y léalos al participante cuando finalice el turno. Una vez concluido el proceso de capacitación, envíe el formulario al Departamento Capacitaciones.
+            </div>
+          )}
 
           <div className="space-y-4 mb-8">
-            <div className="flex flex-col md:flex-row md:items-center">
-              <span className="font-bold text-sm w-64 flex items-center">
-                Fecha de la capacitación: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
-              </span>
-              <div className="flex flex-col md:w-48">
-                {preDatos ? (
+            {preDatos && (
+              <div className="flex flex-col md:flex-row md:items-center">
+                <span className="font-bold text-sm w-64 flex items-center">
+                  Fecha de la asignación: <Lock size={12} className="ml-1 text-gray-400" />
+                </span>
+                <div className="flex flex-col md:w-48">
                   <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
-                    {preDatos.fecha_programada ? new Date(preDatos.fecha_programada).toLocaleDateString() : 'Sin fecha asignada'}
+                    {fechaMostrarAsignacion ? new Date(fechaMostrarAsignacion).toLocaleDateString() : 'Sin fecha asignada'}
                   </div>
-                ) : (
-                  <input type="date" {...register('fecha', { required: true })} className={`${inputPDFClass} ${errors.fecha ? 'border-red-500 bg-red-50' : ''} h-[30px]`} />
-                )}
-                {errors.fecha && !preDatos && <span className="text-red-500 text-xs mt-1">Obligatorio</span>}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col md:flex-row md:items-center">
+              <span className="font-bold text-sm w-64 flex items-center">Fecha de la capacitación:</span>
+              <div className="flex flex-col md:w-48">
+                <input 
+                  type="date" 
+                  {...register('fecha', { required: true })} 
+                  className={`${inputPDFClass} ${errors.fecha ? 'border-red-500 bg-red-50' : ''} h-[30px]`} 
+                />
+                {errors.fecha && <span className="text-red-500 text-xs mt-1">Obligatorio</span>}
               </div>
             </div>
             
-            {/* AQUÍ ESTÁ EL CAMBIO DEL CAPACITADOR */}
             <div className="flex flex-col md:flex-row md:items-start pt-1">
               <span className="font-bold text-sm w-64 mt-1 flex items-center">
                 Nombre del capacitador: <Lock size={12} className="ml-1 text-gray-400" />
@@ -209,7 +277,10 @@ export default function FormularioLCCS({ preDatos = null }) {
               <div className="flex flex-col flex-1">
                 <input type="hidden" {...register('capacitador_id', { required: true })} />
                 <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
-                  {nombreCapacitadorLogueado || 'Cargando...'}
+                  {nombreCapacitadorOriginal || 'Cargando...'}
+                  {evaluacionIdEdicion && nombreCapacitadorOriginal !== nombreCapacitadorLogueado && (
+                    <span className="ml-2 text-xs text-blue-600 font-bold">(Editando: {nombreCapacitadorLogueado})</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -221,7 +292,7 @@ export default function FormularioLCCS({ preDatos = null }) {
               <div className="flex flex-col flex-1">
                 {preDatos ? (
                   <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed font-semibold">
-                    {preDatos.nombres_apellidos}
+                    {nombreMostrarParticipante}
                   </div>
                 ) : (
                   <>
@@ -239,11 +310,13 @@ export default function FormularioLCCS({ preDatos = null }) {
             </div>
 
             <div className="flex flex-col md:flex-row md:items-start pt-1">
-              <span className="font-bold text-sm w-64 mt-1 flex items-center">
-                Punto de la metropolitana: {preDatos && <Lock size={12} className="ml-1 text-gray-400" />}
-              </span>
+              <span className="font-bold text-sm w-64 mt-1 flex items-center">Punto de la metropolitana:</span>
               <div className="flex flex-col flex-1">
-                {preDatos ? (
+                {evaluacionIdEdicion ? (
+                  <select {...register('punto', { required: true })} className={`${inputPDFClass} h-[30px] bg-white`}>
+                    {PUNTOS_METROPOLITANA.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                ) : preDatos ? (
                   <div className="w-full bg-gray-100 border border-gray-300 px-2 py-1 text-sm text-gray-600 h-[30px] flex items-center cursor-not-allowed">
                     {preDatos.punto_programado || 'Sin punto asignado'}
                   </div>
@@ -354,11 +427,11 @@ export default function FormularioLCCS({ preDatos = null }) {
           </div>
 
           <div className="border-t border-gray-300 pt-6 flex flex-col items-center">
-            <span className="text-xs text-gray-500 mb-6">[Antes de enviar el formulario debe verificar toda la información]</span>
+            {!evaluacionIdEdicion && <span className="text-xs text-gray-500 mb-6">[Antes de enviar el formulario debe verificar toda la información]</span>}
             
             <button type="submit" disabled={enviando} className="w-full md:w-auto flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-10 rounded shadow-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:scale-100">
               {enviando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="mr-2" />}
-              {enviando ? 'Guardando evaluación...' : 'Enviar al Departamento Capacitaciones'}
+              {enviando ? 'Guardando...' : evaluacionIdEdicion ? 'Actualizar Evaluación' : 'Enviar al Departamento Capacitaciones'}
             </button>
           </div>
         </form>
@@ -370,10 +443,10 @@ export default function FormularioLCCS({ preDatos = null }) {
             <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6">
               <CheckCircle className="w-16 h-16 text-green-500" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Evaluación Guardada!</h2>
-            <p className="text-gray-500 mb-8">El informe ha sido enviado con éxito al departamento.</p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{evaluacionIdEdicion ? '¡Actualizada!' : '¡Evaluación Guardada!'}</h2>
+            <p className="text-gray-500 mb-8">{evaluacionIdEdicion ? 'La evaluación ha sido modificada con éxito.' : 'El informe ha sido enviado con éxito al departamento.'}</p>
             <button onClick={reiniciarFormulario} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors">
-              Comenzar nueva evaluación
+              {evaluacionIdEdicion ? 'Volver al Historial' : 'Comenzar nueva evaluación'}
             </button>
           </div>
         </div>

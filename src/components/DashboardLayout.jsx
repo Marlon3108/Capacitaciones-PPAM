@@ -15,7 +15,7 @@ import HistorialEvaluaciones from './HistorialEvaluaciones'
 import AsignacionParticipantes from './AsignacionParticipantes'
 import CapacitadoresList from './CapacitadoresList'
 import GeneradorInvitacionQR from './GeneradorInvitacionQR';
-import GestionUsuarios from './GestionUsuarios'; // <--- IMPORTACIÓN DEL NUEVO MÓDULO
+import GestionUsuarios from './GestionUsuarios';
 import useAutoLogout from './useAutoLogout'
 
 export default function DashboardLayout({ userEmail }) {
@@ -42,7 +42,13 @@ export default function DashboardLayout({ userEmail }) {
           .eq('id', session.user.id)
           .single()
         
-        setRolUsuario(userData?.roles?.nombre?.toLowerCase() || 'capacitador')
+        const roleName = userData?.roles?.nombre?.toLowerCase() || 'capacitador';
+        setRolUsuario(roleName)
+
+        // NUEVO: Redirección automática si es escritorio
+        if (roleName === 'escritorio') {
+          setActiveMenu('Historial Evaluaciones')
+        }
       }
       setCargandoRol(false)
     }
@@ -52,16 +58,15 @@ export default function DashboardLayout({ userEmail }) {
   // Menú completo. Usamos la propiedad 'rolesPermitidos' para decidir quién lo ve
   const menuItemsCompleto = [
     { name: 'Inicio', icon: LayoutDashboard, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
-    { name: 'Historial Evaluaciones', icon: FileText, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Historial Evaluaciones', icon: FileText, rolesPermitidos: ['administrador', 'coordinador', 'capacitador','escritorio'] },
     { name: 'Informe de Capacitación', icon: ClipboardList, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
     { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Capacitadores', icon: UserCheck, rolesPermitidos: ['administrador', 'coordinador'] },
-    // NUEVO MÓDULO (Solo Administrador)
     { name: 'Gestión Usuarios', icon: UserCog, rolesPermitidos: ['administrador'] },
     { name: 'Invitaciones QR', icon: QrCode, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Nuevos Participantes', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
-    { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
+    { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador','escritorio'] },
   ]
 
   // Filtramos el menú según el rol que tenga la persona
@@ -162,7 +167,7 @@ export default function DashboardLayout({ userEmail }) {
             {activeMenu === 'Inicio' ? (
               <InicioDashboard userName={userEmail} setPestanaActiva={handleCambioPestana} />
             ) : activeMenu === 'Historial Evaluaciones' ? (
-              <HistorialEvaluaciones />
+              <HistorialEvaluaciones setPestanaActiva={handleCambioPestana} />
             ) : activeMenu === 'Participantes' ? (
               <TableroParticipantes />
             ) : activeMenu === 'Programación' ? (
@@ -174,7 +179,10 @@ export default function DashboardLayout({ userEmail }) {
             ) : activeMenu === 'Invitaciones QR' ? (
               <GeneradorInvitacionQR />
             ) : activeMenu === 'Informe de Capacitación' ? (
-              <FormularioLCCS preDatos={datosEvaluacion} />
+              <FormularioLCCS 
+                preDatos={datosEvaluacion} 
+                setPestanaActiva={handleCambioPestana}
+              />
             ) : activeMenu === 'Nuevos Participantes' ? (
               <GestorNuevosParticipantes />
             ) : activeMenu === 'Configuración' ? (

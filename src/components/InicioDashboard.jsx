@@ -2,10 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
 import { 
   Users, CheckCircle, Clock, AlertTriangle, FileText, Activity, 
-  PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone, RefreshCw, Filter
+  PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone, RefreshCw, CheckCircle2
 } from 'lucide-react'
 
-// MODIFICACIÓN: Se añade onClick y un borde especial si la tarjeta está activa
 const MetricaCard = ({ titulo, valor, icono: Icono, colorFondo, colorIcono, onClick, activa }) => (
   <div 
     onClick={onClick}
@@ -25,12 +24,12 @@ const MetricaCard = ({ titulo, valor, icono: Icono, colorFondo, colorIcono, onCl
 
 const traducirEstado = (estado) => {
   const diccionario = {
-    aprobado: { texto: 'Aprobado', color: 'text-green-700 bg-green-100' },
-    requiere_refuerzo: { texto: 'Refuerzo (1m)', color: 'text-yellow-700 bg-yellow-100' },
-    repetir_6_meses: { texto: 'Repetir (6m)', color: 'text-orange-700 bg-orange-100' },
-    no_cumple: { texto: 'No cumple', color: 'text-red-700 bg-red-100' },
+    aprobado: { texto: 'Aprobado', color: 'text-green-700 bg-green-100 border border-green-200' },
+    requiere_refuerzo: { texto: 'Refuerzo (1m)', color: 'text-yellow-700 bg-yellow-100 border border-yellow-200' },
+    repetir_6_meses: { texto: 'Repetir (6m)', color: 'text-orange-700 bg-orange-100 border border-orange-200' },
+    no_cumple: { texto: 'No cumple', color: 'text-red-700 bg-red-100 border border-red-200' },
   }
-  return diccionario[estado] || { texto: estado, color: 'text-gray-700 bg-gray-100' }
+  return diccionario[estado] || { texto: estado, color: 'text-gray-700 bg-gray-100 border border-gray-200' }
 }
 
 export default function InicioDashboard({ userName, setPestanaActiva }) {
@@ -45,7 +44,6 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
   const [paginaActual, setPaginaActual] = useState(1)
   const [filtroCategoria, setFiltroCategoria] = useState('todas'); 
   
-  // NUEVO ESTADO: Para saber qué tarjeta clickeó el administrador
   const [filtroDashboardAdmins, setFiltroDashboardAdmins] = useState('todas'); 
   const itemsPorPagina = 10
 
@@ -76,11 +74,12 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
         })
       }
 
+      // MODIFICACIÓN: Agregada fecha_capacitacion en evaluaciones, y punto_fijo, fecha_programada en participantes
       const { data: evalData } = await supabase
         .from('evaluaciones_lccs')
         .select(`
-          id, creado_en, resultado_aprobacion, punto_metropolitana,
-          participantes(nombres_apellidos),
+          id, creado_en, resultado_aprobacion, punto_metropolitana, fecha_capacitacion,
+          participantes(nombres_apellidos, punto_fijo, fecha_programada),
           usuarios(nombre_completo)
         `)
         .order('creado_en', { ascending: false })
@@ -102,18 +101,13 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
   }
 
   useEffect(() => {
-    const cargar = async () => {
-      await fetchDashboardData()
-    }
-    cargar()
+    fetchDashboardData()
   }, [])
 
-  // MODIFICACIÓN: Agregamos lógica para filtrar según la tarjeta seleccionada
   const evaluacionesFiltradas = useMemo(() => {
     if (!evaluacionesRecientes) return []
     
     return evaluacionesRecientes.filter(ev => {
-      // Filtro de la tarjeta de métricas
       let pasaFiltroTarjeta = true;
       if (filtroDashboardAdmins === 'aprobados') pasaFiltroTarjeta = ev.resultado_aprobacion === 'aprobado';
       if (filtroDashboardAdmins === 'refuerzo') pasaFiltroTarjeta = ['requiere_refuerzo', 'repetir_6_meses'].includes(ev.resultado_aprobacion);
@@ -121,7 +115,6 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
       
       if (!pasaFiltroTarjeta) return false;
 
-      // Filtro de búsqueda por texto
       const termino = busqueda.toLowerCase()
       const participante = (ev.participantes?.nombres_apellidos || '').toLowerCase()
       const capacitador = (ev.usuarios?.nombre_completo || '').toLowerCase()
@@ -144,9 +137,7 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
     setPaginaActual(1)
   }
 
-  // Función auxiliar para las tarjetas
   const toggleFiltroMeticas = (filtro) => {
-    // Si da clic en la misma, la deselecciona y vuelve a 'todas'
     if (filtroDashboardAdmins === filtro) {
       setFiltroDashboardAdmins('todas')
     } else {
@@ -339,7 +330,7 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
             />
             <MetricaCard 
               titulo="En Pausa" valor={metricas.pausa} icono={PauseCircle} colorFondo="bg-gray-100" colorIcono="text-gray-800" 
-              activa={false} onClick={() => {}} // Pausa no está evaluado aún
+              activa={false} onClick={() => {}} 
             />
             <MetricaCard 
               titulo="No Cumplen" valor={metricas.rechazos} icono={AlertTriangle} colorFondo="bg-red-50" colorIcono="text-red-600" 
@@ -368,34 +359,61 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 text-gray-500 text-sm">
-                    <th className="p-4 font-medium">Fecha</th>
-                    <th className="p-4 font-medium">Participante</th>
-                    <th className="p-4 font-medium">Capacitador</th>
-                    <th className="p-4 font-medium">Punto</th>
-                    <th className="p-4 font-medium">Resultado</th>
+                  <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                    <th className="p-4 font-semibold">Participante Evaluado</th>
+                    <th className="p-4 font-semibold">Capacitador</th>
+                    <th className="p-4 font-semibold">Punto Evaluado</th>
+                    <th className="p-4 font-semibold w-40 text-center">Fechas</th>
+                    <th className="p-4 font-semibold text-center">Resultado</th>
+                    <th className="p-4 font-semibold text-center">Trámite</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm divide-y divide-gray-100">
                   {evaluacionesPaginadas.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="p-8 text-center text-gray-500">
+                      <td colSpan="6" className="p-8 text-center text-gray-500">
                         {busqueda || filtroDashboardAdmins !== 'todas' ? 'No se encontraron resultados para los filtros aplicados' : 'No hay evaluaciones recientes'}
                       </td>
                     </tr>
                   ) : (
                     evaluacionesPaginadas.map(ev => {
                       const est = traducirEstado(ev.resultado_aprobacion)
+                      const estaTramitado = !!ev.participantes?.punto_fijo;
+                      const fAsig = ev.participantes?.fecha_programada ? new Date(ev.participantes.fecha_programada).toLocaleDateString() : '---';
+                      const fCap = ev.fecha_capacitacion ? new Date(ev.fecha_capacitacion).toLocaleDateString() : new Date(ev.creado_en).toLocaleDateString();
+
                       return (
                         <tr key={ev.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="p-4 text-gray-600">{new Date(ev.creado_en).toLocaleDateString()}</td>
-                          <td className="p-4 font-medium text-gray-800">{ev.participantes?.nombres_apellidos}</td>
+                          <td className="p-4 font-bold text-gray-800">{ev.participantes?.nombres_apellidos}</td>
                           <td className="p-4 text-gray-600">{ev.usuarios?.nombre_completo}</td>
-                          <td className="p-4 text-gray-600">{ev.punto_metropolitana}</td>
+                          <td className="p-4 text-gray-600">
+                            <span className="flex items-center text-xs"><MapPin size={12} className="mr-1 text-gray-400"/> {ev.punto_metropolitana || 'Sin punto'}</span>
+                          </td>
                           <td className="p-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${est.color}`}>
+                            <div className="flex flex-col gap-1.5 text-[11px] bg-gray-50 border border-gray-100 p-2 rounded-lg">
+                              <div className="flex justify-between text-gray-500">
+                                <span>Asig:</span><span className="font-semibold text-gray-700">{fAsig}</span>
+                              </div>
+                              <div className="flex justify-between text-green-700">
+                                <span className="font-semibold">Cap:</span><span className="font-bold">{fCap}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${est.color}`}>
                               {est.texto}
                             </span>
+                          </td>
+                          <td className="p-4 text-center">
+                            {estaTramitado ? (
+                              <span className="inline-flex items-center justify-center px-2 py-1 bg-orange-100 text-orange-700 border border-orange-200 rounded text-[10px] font-bold whitespace-nowrap">
+                                <CheckCircle2 size={12} className="mr-1" /> TRAMITADO POR ESCRITORIO
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center px-2 py-1 bg-gray-100 text-gray-500 border border-gray-200 rounded text-[10px] font-bold whitespace-nowrap">
+                                NO TRAMITADO
+                              </span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -407,21 +425,21 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
 
             {totalPaginas > 1 && (
               <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 font-medium">
                   Mostrando {(paginaActual - 1) * itemsPorPagina + 1} a {Math.min(paginaActual * itemsPorPagina, evaluacionesFiltradas.length)} de {evaluacionesFiltradas.length}
                 </span>
                 <div className="flex space-x-2">
                   <button 
                     onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
                     disabled={paginaActual === 1}
-                    className="p-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft size={18} />
                   </button>
                   <button 
                     onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
                     disabled={paginaActual === totalPaginas}
-                    className="p-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ChevronRight size={18} />
                   </button>
