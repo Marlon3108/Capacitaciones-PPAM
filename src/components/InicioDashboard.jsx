@@ -295,11 +295,11 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                             <div className="space-y-2 mb-6">
                               <div className="flex items-center text-sm font-medium text-gray-700 bg-gray-50 p-2 rounded-lg">
                                 <Calendar size={16} className="text-green-600 mr-2 flex-shrink-0"/> 
-                                {asig.fechaprogramada ? new Date(asig.fechaprogramada).toLocaleDateString() : 'Fecha por definir'}
+                                {asig.fecha_programada ? new Date(asig.fecha_programada).toLocaleDateString() : 'Fecha por definir'}
                               </div>
                               <div className="flex items-center text-sm font-medium text-gray-700 bg-gray-50 p-2 rounded-lg">
                                 <MapPin size={16} className="text-blue-600 mr-2 flex-shrink-0"/> 
-                                {asig.puntoprogramado || 'Punto por definir'}
+                                {asig.punto_programado || 'Punto por definir'}
                               </div>
                             </div>
                           </div>
