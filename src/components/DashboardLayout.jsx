@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, FileSpreadsheet, FileText, Calendar, Activity, UserCheck, QrCode} from 'lucide-react'
+import { 
+  LogOut, Menu, X, Users, ClipboardList, LayoutDashboard, Settings, 
+  FileSpreadsheet, FileText, Calendar, Activity, UserCheck, QrCode, UserCog 
+} from 'lucide-react'
+
+// Importaciones de los componentes de módulos
 import GestorNuevosParticipantes from './GestorNuevosParticipantes';
 import FormularioLCCS from './FormularioLCCS'
 import TableroParticipantes from './TableroParticipantes'
@@ -10,6 +15,7 @@ import HistorialEvaluaciones from './HistorialEvaluaciones'
 import AsignacionParticipantes from './AsignacionParticipantes'
 import CapacitadoresList from './CapacitadoresList'
 import GeneradorInvitacionQR from './GeneradorInvitacionQR';
+import GestionUsuarios from './GestionUsuarios'; // <--- IMPORTACIÓN DEL NUEVO MÓDULO
 import useAutoLogout from './useAutoLogout'
 
 export default function DashboardLayout({ userEmail }) {
@@ -44,7 +50,6 @@ export default function DashboardLayout({ userEmail }) {
   }, [])
 
   // Menú completo. Usamos la propiedad 'rolesPermitidos' para decidir quién lo ve
-  // OJO AQUÍ: El nombre es exactamente 'Informe de Capacitación'
   const menuItemsCompleto = [
     { name: 'Inicio', icon: LayoutDashboard, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
     { name: 'Historial Evaluaciones', icon: FileText, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
@@ -52,6 +57,8 @@ export default function DashboardLayout({ userEmail }) {
     { name: 'Participantes', icon: Users, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Programación', icon: Calendar, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Capacitadores', icon: UserCheck, rolesPermitidos: ['administrador', 'coordinador'] },
+    // NUEVO MÓDULO (Solo Administrador)
+    { name: 'Gestión Usuarios', icon: UserCog, rolesPermitidos: ['administrador'] },
     { name: 'Invitaciones QR', icon: QrCode, rolesPermitidos: ['administrador', 'coordinador'] },
     { name: 'Nuevos Participantes', icon: FileSpreadsheet, rolesPermitidos: ['administrador'] },
     { name: 'Configuración', icon: Settings, rolesPermitidos: ['administrador', 'coordinador', 'capacitador'] },
@@ -93,7 +100,7 @@ export default function DashboardLayout({ userEmail }) {
           </div>
 
           {/* Menú de Navegación */}
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
             {menuItems.map((item) => {
               const Icon = item.icon
               const isActive = activeMenu === item.name
@@ -104,17 +111,13 @@ export default function DashboardLayout({ userEmail }) {
                     setActiveMenu(item.name)
                     setSidebarOpen(false)
                   }}
-                  // Añadimos 'overflow-hidden' al contenedor del botón
                   className={`w-full flex items-center text-left px-4 py-3 rounded-xl transition-colors overflow-hidden ${
                     isActive 
                       ? 'bg-blue-50 text-blue-700 font-semibold' 
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 >
-                  {/* Le añadimos flex-shrink-0 al ícono para que no se aplaste */}
                   <Icon size={20} className={`flex-shrink-0 mr-3 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-                  
-                  {/* Envolvemos el texto en un span con truncate para que corte con puntos suspensivos si no cabe */}
                   <span className="truncate">{item.name}</span>
                 </button>
               )
@@ -142,7 +145,7 @@ export default function DashboardLayout({ userEmail }) {
 
       {/* Área Principal de Contenido */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* HEADER MODIFICADO PARA INCLUIR EL BOTÓN DE HAMBURGUESA */}
+        {/* HEADER */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-8">
           <button 
             className="lg:hidden p-2 mr-4 text-gray-600 hover:bg-gray-100 rounded-md"
@@ -153,9 +156,9 @@ export default function DashboardLayout({ userEmail }) {
           <h1 className="text-xl font-semibold text-gray-800">{activeMenu}</h1>
         </header>
 
-        <div className="flex-1 overflow-auto p-8 bg-slate-50">
+        <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-50">
           <div className="max-w-[1400px] mx-auto h-full">
-            {/* OJO AQUÍ: Comparamos exactamente con 'Informe de Capacitación' */}
+            {/* RENDERIZADO DEL COMPONENTE SEGÚN EL MENÚ ACTIVO */}
             {activeMenu === 'Inicio' ? (
               <InicioDashboard userName={userEmail} setPestanaActiva={handleCambioPestana} />
             ) : activeMenu === 'Historial Evaluaciones' ? (
@@ -166,9 +169,11 @@ export default function DashboardLayout({ userEmail }) {
               <AsignacionParticipantes />
             ) : activeMenu === 'Capacitadores' ? (
               <CapacitadoresList />
+            ) : activeMenu === 'Gestión Usuarios' ? (
+              <GestionUsuarios /> 
             ) : activeMenu === 'Invitaciones QR' ? (
               <GeneradorInvitacionQR />
-            ): activeMenu === 'Informe de Capacitación' ? (
+            ) : activeMenu === 'Informe de Capacitación' ? (
               <FormularioLCCS preDatos={datosEvaluacion} />
             ) : activeMenu === 'Nuevos Participantes' ? (
               <GestorNuevosParticipantes />
