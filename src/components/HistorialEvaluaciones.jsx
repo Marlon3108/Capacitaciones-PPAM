@@ -534,14 +534,6 @@ export default function HistorialEvaluaciones() {
                           >
                             <Eye size={18} />
                           </button>
-                          
-                          <button 
-                            onClick={() => generarPDF(ev)}
-                            className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors"
-                            title="Descargar PDF"
-                          >
-                            <Download size={18} />
-                          </button>
                         </div>
                       </td>
                     </tr>
