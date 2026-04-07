@@ -31,6 +31,8 @@ export default function FormularioLCCS({ preDatos = null, setPestanaActiva }) {
   const [nombreCapacitadorLogueado, setNombreCapacitadorLogueado] = useState('')
   const [evaluacionIdEdicion, setEvaluacionIdEdicion] = useState(null)
 
+  const [errorModal, setErrorModal] = useState(null)
+
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm()
   
   const participanteId = watch('participante')
@@ -174,8 +176,13 @@ const onSubmit = async (data) => {
       setModalExito(true)
       
     } catch (error) {
-      setErrorSuperior(error.message)
-      window.scrollTo(0, 0)
+      setErrorModal({
+        mensaje: error.message || 'Sin mensaje',
+        codigo: error.code || 'Sin código',
+        detalles: error.details || 'Sin detalles',
+        hint: error.hint || '',
+        hora: new Date().toLocaleTimeString('es-CO')
+      })
     }
     setEnviando(false)
   }
@@ -467,6 +474,61 @@ const onSubmit = async (data) => {
             <button onClick={reiniciarFormulario} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors">
               {evaluacionIdEdicion ? 'Volver al Historial' : 'Comenzar nueva evaluación'}
             </button>
+          </div>
+        </div>
+      )}
+      {/* MODAL DE ERROR DE DIAGNÓSTICO */}
+      {errorModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            
+            <div className="bg-red-600 px-6 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-base">Error al enviar</h3>
+                <p className="text-red-200 text-xs">{errorModal.hora}</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-3">
+              <p className="text-gray-600 text-sm text-center">
+                📸 Toma una captura de pantalla y envíasela al administrador.
+              </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 font-mono text-xs">
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">Mensaje:</span>
+                  <span className="text-red-700 font-semibold break-all">{errorModal.mensaje}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">Código:</span>
+                  <span className="text-gray-800 break-all">{errorModal.codigo}</span>
+                </div>
+                {errorModal.detalles !== 'Sin detalles' && (
+                  <div className="flex gap-2">
+                    <span className="text-gray-400 w-16 flex-shrink-0">Detalles:</span>
+                    <span className="text-gray-800 break-all">{errorModal.detalles}</span>
+                  </div>
+                )}
+                {errorModal.hint && (
+                  <div className="flex gap-2">
+                    <span className="text-gray-400 w-16 flex-shrink-0">Hint:</span>
+                    <span className="text-gray-800 break-all">{errorModal.hint}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 pb-5">
+              <button
+                onClick={() => setErrorModal(null)}
+                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+              >
+                Entendido, cerrar
+              </button>
+            </div>
+
           </div>
         </div>
       )}
