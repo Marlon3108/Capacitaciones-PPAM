@@ -26,16 +26,10 @@ function App() {
   }
 
   // Función para verificar si el usuario tiene la contraseña temporal
-  const verificarContrasenaTemporal = async (email) => {
-    // Intentamos hacer un "login falso" silencioso con la contraseña temporal
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: 'PasswordTemporal123!'
-    })
-    
-    // Si NO hay error, significa que la contraseña temporal FUNCIONÓ. 
-    // Por lo tanto, ¡necesita cambiarla obligatoriamente!
-    if (!error) {
+  const verificarContrasenaTemporal = async () => {
+    // Lee los metadatos del usuario actual — sin hacer ningún login adicional
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.user_metadata?.debe_cambiar_clave === true) {
       setNecesitaCambioClave(true)
     }
   }
@@ -46,7 +40,7 @@ function App() {
       if (session) {
         fetchUserProfile(session.user.id)
         // Revisamos si necesita cambiar clave verificando la temporal
-        verificarContrasenaTemporal(session.user.email)
+        verificarContrasenaTemporal()
         
         // Limpiamos la URL por si quedó algún rastro de hash o error del correo
         if (window.location.hash) {
@@ -62,7 +56,7 @@ function App() {
       if (session) {
         fetchUserProfile(session.user.id)
         if (event === 'SIGNED_IN') {
-           verificarContrasenaTemporal(session.user.email)
+           verificarContrasenaTemporal()
         }
       } else {
         setUserData(null)

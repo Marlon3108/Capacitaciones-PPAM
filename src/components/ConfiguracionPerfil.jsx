@@ -92,7 +92,8 @@ export default function ConfiguracionPerfil({ userEmail }) {
         options: {
           data: {
             nombre_completo: nuevoUsuario.nombre,
-            rol_id: rolSeleccionado.id
+            rol_id: rolSeleccionado.id,
+            debe_cambiar_clave: true
           }
         }
       })

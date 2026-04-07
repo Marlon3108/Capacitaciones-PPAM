@@ -108,15 +108,30 @@ export default function FormularioLCCS({ preDatos = null, setPestanaActiva }) {
     }
   }, [formValues, participanteId, evaluacionIdEdicion])
 
-  const onSubmit = async (data) => {
-    if (!data.capacitador_id || !data.participante || !data.punto) {
-      setErrorSuperior("Faltan datos internos (ID del Capacitador, Participante o Punto). Por favor, recargue la página, espere a que cargue su nombre y vuelva a intentar.");
-      window.scrollTo(0, 0);
-      return;
-    }
+const onSubmit = async (data) => {
+  // 1. VERIFICAR SESIÓN ACTIVA ANTES DE TODO
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+  
+  if (!session || sessionError) {
+    // Intentar renovar la sesión automáticamente
+    const { error: refreshError } = await supabase.auth.refreshSession()
     
-    setEnviando(true)
-    setErrorSuperior(null)
+    if (refreshError) {
+      setErrorSuperior("Tu sesión ha expirado. Por favor, cierra sesión y vuelve a entrar.")
+      window.scrollTo(0, 0)
+      return
+    }
+  }
+
+  // 2. VALIDAR DATOS INTERNOS
+  if (!data.capacitador_id || !data.participante || !data.punto) {
+    setErrorSuperior("Faltan datos. Por favor, recarga la página y vuelve a intentarlo.")
+    window.scrollTo(0, 0)
+    return
+  }
+
+  setEnviando(true)
+  setErrorSuperior(null)
     
     const baseEvaluacion = {
       participante_id: data.participante,

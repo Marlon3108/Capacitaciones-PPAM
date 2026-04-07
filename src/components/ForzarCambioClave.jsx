@@ -38,6 +38,11 @@ export default function ForzarCambioClave({ onClaveCambiada }) {
       setMensaje({ tipo: 'error', texto: error.message })
       setLoading(false)
     } else {
+      // ✅ Borrar la bandera de contraseña temporal en los metadatos
+      await supabase.auth.updateUser({
+        data: { debe_cambiar_clave: false }
+      })
+
       setMensaje({ tipo: 'exito', texto: '¡Contraseña actualizada con éxito!' })
       // Le damos 2 segundos para que lea el mensaje de éxito antes de mandarlo al dashboard
       setTimeout(() => {
