@@ -4,6 +4,7 @@ import Login from './components/Login'
 import DashboardLayout from './components/DashboardLayout'
 import ForzarCambioClave from './components/ForzarCambioClave'
 import ScannerOrientacion from './components/ScannerOrientacion'
+import NuevaVersionBanner from './components/NuevaVersionBanner'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -67,7 +68,12 @@ function App() {
   }, [])
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Cargando...</div>
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">Cargando...</div>
+        <NuevaVersionBanner />
+      </>
+    )
   }
 
   // 3. SI NO HAY SESIÓN, MOSTRAMOS LOGIN + BOTÓN DE ESCÁNER
@@ -95,19 +101,29 @@ function App() {
         {mostrarEscaner && (
           <ScannerOrientacion onCerrar={() => setMostrarEscaner(false)} />
         )}
-        
+        <NuevaVersionBanner />
       </div>
     )
   }
 
   // SI LA CONTRASEÑA ES LA TEMPORAL, APARECE EL CANDADO.
   if (necesitaCambioClave) {
-    return <ForzarCambioClave onClaveCambiada={() => setNecesitaCambioClave(false)} />
+    return (
+      <>
+        <ForzarCambioClave onClaveCambiada={() => setNecesitaCambioClave(false)} />
+        <NuevaVersionBanner />
+      </>
+    )
   }
 
   const nombreMostrar = userData?.nombre_completo || session.user.email
 
-  return <DashboardLayout userEmail={nombreMostrar} />
+  return (
+    <>
+      <DashboardLayout userEmail={nombreMostrar} />
+      <NuevaVersionBanner />
+    </>
+  )
 }
 
 export default App
