@@ -82,6 +82,7 @@ export default function FormularioLCCS({ preDatos = null, setPestanaActiva }) {
         else {
           setValue('punto', preDatos.punto_programado || '')
           setValue('participante', preDatos.id)
+          setValue('capacitador_id', session.user.id)
 
           const borradorGuardado = localStorage.getItem(`borrador_lccs_${preDatos.id}`)
           if (borradorGuardado) {
