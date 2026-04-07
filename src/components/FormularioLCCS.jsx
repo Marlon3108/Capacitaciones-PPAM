@@ -109,8 +109,12 @@ export default function FormularioLCCS({ preDatos = null, setPestanaActiva }) {
   }, [formValues, participanteId, evaluacionIdEdicion])
 
   const onSubmit = async (data) => {
-    if (!data.capacitador_id || !data.participante || !data.punto) return
-
+    if (!data.capacitador_id || !data.participante || !data.punto) {
+      setErrorSuperior("Faltan datos internos (ID del Capacitador, Participante o Punto). Por favor, recargue la página, espere a que cargue su nombre y vuelva a intentar.");
+      window.scrollTo(0, 0);
+      return;
+    }
+    
     setEnviando(true)
     setErrorSuperior(null)
     
