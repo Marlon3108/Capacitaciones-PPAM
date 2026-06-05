@@ -346,8 +346,7 @@ export default function ScannerOrientacion() {
             <p className="text-xs text-gray-500 leading-relaxed">
               El lector de cámara envía automáticamente el resultado al
               consultar el <span className="font-semibold">qr_token</span>. Este
-              módulo solo valida participantes con categoría{" "}
-              <span className="font-semibold">nuevo_orientacion</span>.
+              módulo solo valida participantes
             </p>
           </div>
         </div>
