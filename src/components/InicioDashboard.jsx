@@ -1,19 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
-import { 
-  Users, CheckCircle, Clock, AlertTriangle, FileText, Activity, 
+import {
+  Users, CheckCircle, Clock, AlertTriangle, FileText, Activity,
   PauseCircle, Search, ChevronLeft, ChevronRight, Calendar, MapPin, ClipboardList, Phone, RefreshCw, CheckCircle2
 } from 'lucide-react'
 
-const MetricaCard = ({ titulo, valor, icono: Icono, colorFondo, colorIcono, onClick, activa }) => (
-  <div 
+const MetricaCard = ({ titulo, valor, icono, colorFondo, colorIcono, onClick, activa }) => (
+  <div
     onClick={onClick}
     className={`bg-white p-5 rounded-2xl shadow-sm flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] ${
       activa ? `border-2 border-${colorIcono.split('-')[1]}-500 ring-2 ring-${colorIcono.split('-')[1]}-100` : 'border border-gray-100'
     }`}
   >
     <div className={`p-3 rounded-xl ${colorFondo} flex-shrink-0 mr-4`}>
-      <Icono size={24} className={colorIcono} />
+      {icono && React.createElement(icono, { size: 24, className: colorIcono })}
     </div>
     <div className="text-right">
       <p className="text-sm font-semibold text-gray-500 whitespace-nowrap">{titulo}</p>
@@ -36,68 +36,65 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
   const [metricas, setMetricas] = useState({ total: 0, pendientes: 0, aprobados: 0, refuerzo: 0, rechazos: 0, pausa: 0 })
   const [evaluacionesRecientes, setEvaluacionesRecientes] = useState([])
   const [cargando, setCargando] = useState(true)
-
   const [rolUsuario, setRolUsuario] = useState(null)
   const [misAsignaciones, setMisAsignaciones] = useState([])
-
   const [busqueda, setBusqueda] = useState('')
   const [paginaActual, setPaginaActual] = useState(1)
-  const [filtroCategoria, setFiltroCategoria] = useState('todas'); 
-  
-  const [filtroDashboardAdmins, setFiltroDashboardAdmins] = useState('todas'); 
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [filtroDashboardAdmins, setFiltroDashboardAdmins] = useState('todas')
   const itemsPorPagina = 10
 
   const fetchDashboardData = async () => {
     setCargando(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
 
-    const { data: userData } = await supabase
-      .from('usuarios')
-      .select('roles(nombre)')
-      .eq('id', session.user.id)
-      .single()
+      const { data: userData } = await supabase
+        .from('usuarios')
+        .select('roles(nombre)')
+        .eq('id', session.user.id)
+        .single()
 
-    const rolStr = userData?.roles?.nombre?.toLowerCase() || 'capacitador'
-    setRolUsuario(rolStr)
+      const rolStr = userData?.roles?.nombre?.toLowerCase() || 'capacitador'
+      setRolUsuario(rolStr)
 
-    if (rolStr === 'administrador' || rolStr === 'coordinador') {
-      const { data: partData } = await supabase.from('participantes').select('estado')
-      if (partData) {
-        setMetricas({
-          total: partData.length,
-          pendientes: partData.filter(p => p.estado === 'pendiente').length,
-          aprobados: partData.filter(p => p.estado === 'aprobado').length,
-          refuerzo: partData.filter(p => p.estado === 'requiere_refuerzo' || p.estado === 'repetir_6_meses').length,
-          rechazos: partData.filter(p => p.estado === 'no_cumple').length,
-          pausa: partData.filter(p => p.estado === 'en_pausa').length,
-        })
+      if (rolStr === 'administrador' || rolStr === 'coordinador') {
+        const { data: partData } = await supabase.from('participantes').select('estado')
+        if (partData) {
+          setMetricas({
+            total: partData.length,
+            pendientes: partData.filter(p => p.estado === 'pendiente').length,
+            aprobados: partData.filter(p => p.estado === 'aprobado').length,
+            refuerzo: partData.filter(p => p.estado === 'requiere_refuerzo' || p.estado === 'repetir_6_meses').length,
+            rechazos: partData.filter(p => p.estado === 'no_cumple').length,
+            pausa: partData.filter(p => p.estado === 'en_pausa').length,
+          })
+        }
+
+        const { data: evalData } = await supabase
+          .from('evaluaciones_lccs')
+          .select(`
+            id, creado_en, resultado_aprobacion, punto_metropolitana, fecha_capacitacion,
+            participantes(nombres_apellidos, punto_fijo, fecha_programada),
+            usuarios(nombre_completo)
+          `)
+          .order('creado_en', { ascending: false })
+
+        if (evalData) setEvaluacionesRecientes(evalData)
+      } else {
+        const { data: asigData } = await supabase
+          .from('participantes')
+          .select('id, nombres_apellidos, congregacion, fecha_programada, punto_programado, telefono, categoria, estado')
+          .eq('capacitador_id', session.user.id)
+          .in('estado', ['pendiente', 'requiere_refuerzo', 'repetir_6_meses'])
+          .order('fecha_programada', { ascending: true })
+
+        if (asigData) setMisAsignaciones(asigData)
       }
-
-      // MODIFICACIÓN: Agregada fecha_capacitacion en evaluaciones, y punto_fijo, fecha_programada en participantes
-      const { data: evalData } = await supabase
-        .from('evaluaciones_lccs')
-        .select(`
-          id, creado_en, resultado_aprobacion, punto_metropolitana, fecha_capacitacion,
-          participantes(nombres_apellidos, punto_fijo, fecha_programada),
-          usuarios(nombre_completo)
-        `)
-        .order('creado_en', { ascending: false })
-
-      if (evalData) setEvaluacionesRecientes(evalData)
-
-    } else {
-      const { data: asigData } = await supabase
-        .from('participantes')
-        .select('id, nombres_apellidos, congregacion, fecha_programada, punto_programado, telefono, categoria, estado')
-        .eq('capacitador_id', session.user.id)
-        .in('estado', ['pendiente', 'requiere_refuerzo', 'repetir_6_meses'])
-        .order('fecha_programada', { ascending: true })
-
-      if (asigData) setMisAsignaciones(asigData)
+    } finally {
+      setCargando(false)
     }
-
-    setCargando(false)
   }
 
   useEffect(() => {
@@ -106,23 +103,20 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
 
   const evaluacionesFiltradas = useMemo(() => {
     if (!evaluacionesRecientes) return []
-    
+
     return evaluacionesRecientes.filter(ev => {
-      let pasaFiltroTarjeta = true;
-      if (filtroDashboardAdmins === 'aprobados') pasaFiltroTarjeta = ev.resultado_aprobacion === 'aprobado';
-      if (filtroDashboardAdmins === 'refuerzo') pasaFiltroTarjeta = ['requiere_refuerzo', 'repetir_6_meses'].includes(ev.resultado_aprobacion);
-      if (filtroDashboardAdmins === 'rechazos') pasaFiltroTarjeta = ev.resultado_aprobacion === 'no_cumple';
-      
-      if (!pasaFiltroTarjeta) return false;
+      let pasaFiltroTarjeta = true
+      if (filtroDashboardAdmins === 'aprobados') pasaFiltroTarjeta = ev.resultado_aprobacion === 'aprobado'
+      if (filtroDashboardAdmins === 'refuerzo') pasaFiltroTarjeta = ['requiere_refuerzo', 'repetir_6_meses'].includes(ev.resultado_aprobacion)
+      if (filtroDashboardAdmins === 'rechazos') pasaFiltroTarjeta = ev.resultado_aprobacion === 'no_cumple'
+      if (!pasaFiltroTarjeta) return false
 
       const termino = busqueda.toLowerCase()
       const participante = (ev.participantes?.nombres_apellidos || '').toLowerCase()
       const capacitador = (ev.usuarios?.nombre_completo || '').toLowerCase()
       const punto = (ev.punto_metropolitana || '').toLowerCase()
 
-      return participante.includes(termino) || 
-             capacitador.includes(termino) || 
-             punto.includes(termino)
+      return participante.includes(termino) || capacitador.includes(termino) || punto.includes(termino)
     })
   }, [evaluacionesRecientes, busqueda, filtroDashboardAdmins])
 
@@ -138,11 +132,8 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
   }
 
   const toggleFiltroMeticas = (filtro) => {
-    if (filtroDashboardAdmins === filtro) {
-      setFiltroDashboardAdmins('todas')
-    } else {
-      setFiltroDashboardAdmins(filtro)
-    }
+    if (filtroDashboardAdmins === filtro) setFiltroDashboardAdmins('todas')
+    else setFiltroDashboardAdmins(filtro)
     setPaginaActual(1)
   }
 
@@ -156,8 +147,8 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Hola, {nombreMostrar} 👋</h1>
           <p className="text-gray-500 mt-1">
-            {rolUsuario === 'capacitador' 
-              ? 'Bienvenido a tu panel de capacitaciones asignadas.' 
+            {rolUsuario === 'capacitador'
+              ? 'Bienvenido a tu panel de capacitaciones asignadas.'
               : 'Este es el resumen general del departamento de capacitaciones.'}
           </p>
         </div>
@@ -191,25 +182,25 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
             ) : (
               <>
                 <div className="flex flex-wrap gap-2 mb-6">
-                  <button 
+                  <button
                     onClick={() => setFiltroCategoria('todas')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'todas' ? 'bg-slate-700 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                   >
                     Todos
                   </button>
-                  <button 
+                  <button
                     onClick={() => setFiltroCategoria('nuevo')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'nuevo' ? 'bg-emerald-600 text-white shadow' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100'}`}
                   >
                     Nuevos
                   </button>
-                  <button 
+                  <button
                     onClick={() => setFiltroCategoria('viejo_sin_punto')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_sin_punto' ? 'bg-amber-500 text-white shadow' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-100'}`}
                   >
                     Antiguos Sin Punto
                   </button>
-                  <button 
+                  <button
                     onClick={() => setFiltroCategoria('viejo_punto_fijo')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${filtroCategoria === 'viejo_punto_fijo' ? 'bg-indigo-600 text-white shadow' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100'}`}
                   >
@@ -221,22 +212,22 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                   {misAsignaciones
                     .filter(asig => filtroCategoria === 'todas' || asig.categoria === filtroCategoria)
                     .map(asig => {
-                      let colorBorde = "border-gray-200";
-                      let bgBadge = "bg-gray-100 text-gray-700";
-                      let textoBadge = "No especificado";
+                      let colorBorde = 'border-gray-200'
+                      let bgBadge = 'bg-gray-100 text-gray-700'
+                      let textoBadge = 'No especificado'
 
-                      if (asig.categoria === 'nuevo') {
-                        colorBorde = "border-emerald-300 shadow-sm shadow-emerald-100";
-                        bgBadge = "bg-emerald-100 text-emerald-800";
-                        textoBadge = "NUEVO";
+                      if (asig.categoria === 'nuevo' || asig.categoria === 'nuevo_orientacion') {
+                        colorBorde = 'border-emerald-300 shadow-sm shadow-emerald-100'
+                        bgBadge = 'bg-emerald-100 text-emerald-800'
+                        textoBadge = 'NUEVO'
                       } else if (asig.categoria === 'viejo_sin_punto') {
-                        colorBorde = "border-amber-300 shadow-sm shadow-amber-100";
-                        bgBadge = "bg-amber-100 text-amber-800";
-                        textoBadge = "ANTIGUO SIN PUNTO";
+                        colorBorde = 'border-amber-300 shadow-sm shadow-amber-100'
+                        bgBadge = 'bg-amber-100 text-amber-800'
+                        textoBadge = 'ANTIGUO SIN PUNTO'
                       } else if (asig.categoria === 'viejo_punto_fijo') {
-                        colorBorde = "border-indigo-300 shadow-sm shadow-indigo-100";
-                        bgBadge = "bg-indigo-100 text-indigo-800";
-                        textoBadge = "ANTIGUO CON PUNTO";
+                        colorBorde = 'border-indigo-300 shadow-sm shadow-indigo-100'
+                        bgBadge = 'bg-indigo-100 text-indigo-800'
+                        textoBadge = 'ANTIGUO CON PUNTO'
                       }
 
                       return (
@@ -249,53 +240,54 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                                   {textoBadge}
                                 </span>
                               </div>
-                              
+
                               <div className="flex flex-col gap-1 items-end ml-2">
                                 {asig.estado === 'requiere_refuerzo' && (
                                   <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex items-center">
-                                    <AlertTriangle size={10} className="mr-1"/> Refuerzo (1m)
+                                    <AlertTriangle size={10} className="mr-1" /> Refuerzo (1m)
                                   </span>
                                 )}
                                 {asig.estado === 'repetir_6_meses' && (
                                   <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex items-center">
-                                    <AlertTriangle size={10} className="mr-1"/> Repetir (6m)
+                                    <AlertTriangle size={10} className="mr-1" /> Repetir (6m)
                                   </span>
                                 )}
                               </div>
                             </div>
                             <p className="text-sm text-gray-500 mb-4 mt-2">{asig.congregacion}</p>
-                            
+
                             {asig.telefono && (
                               <div className="flex gap-2 mb-4">
-                                <a 
-                                  href={`tel:${asig.telefono}`} 
+                                <a
+                                  href={`tel:${asig.telefono}`}
                                   className="flex-1 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 py-1.5 px-3 rounded-lg text-sm font-medium text-center transition-colors flex items-center justify-center"
                                 >
                                   <Phone size={14} className="mr-1" /> Llamar
                                 </a>
-                                <a 
-                                  href={`https://wa.me/57${asig.telefono.replace(/\s+/g, '')}`} 
-                                  target="_blank" rel="noreferrer"
+                                <a
+                                  href={`https://wa.me/57${asig.telefono.replace(/\s+/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
                                   className="flex-1 bg-green-500 text-white hover:bg-green-600 py-1.5 px-3 rounded-lg text-sm font-medium text-center transition-colors flex items-center justify-center"
                                 >
                                   💬 WhatsApp
                                 </a>
                               </div>
                             )}
-                            
+
                             <div className="space-y-2 mb-6">
                               <div className="flex items-center text-sm font-medium text-gray-700 bg-gray-50 p-2 rounded-lg">
-                                <Calendar size={16} className="text-green-600 mr-2 flex-shrink-0"/> 
+                                <Calendar size={16} className="text-green-600 mr-2 flex-shrink-0" />
                                 {asig.fecha_programada ? new Date(asig.fecha_programada).toLocaleDateString() : 'Fecha por definir'}
                               </div>
                               <div className="flex items-center text-sm font-medium text-gray-700 bg-gray-50 p-2 rounded-lg">
-                                <MapPin size={16} className="text-blue-600 mr-2 flex-shrink-0"/> 
+                                <MapPin size={16} className="text-blue-600 mr-2 flex-shrink-0" />
                                 {asig.punto_programado || 'Punto por definir'}
                               </div>
                             </div>
                           </div>
-                          
-                          <button 
+
+                          <button
                             onClick={() => setPestanaActiva && setPestanaActiva('Informe de Capacitación', asig)}
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors"
                           >
@@ -312,43 +304,75 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <MetricaCard 
-              titulo="Total a Evaluar" valor={metricas.total} icono={Users} colorFondo="bg-blue-50" colorIcono="text-blue-600" 
-              activa={filtroDashboardAdmins === 'todas'} onClick={() => setFiltroDashboardAdmins('todas')}
+            <MetricaCard
+              titulo="Total a Evaluar"
+              valor={metricas.total}
+              icono={Users}
+              colorFondo="bg-blue-50"
+              colorIcono="text-blue-600"
+              activa={filtroDashboardAdmins === 'todas'}
+              onClick={() => setFiltroDashboardAdmins('todas')}
             />
-            <MetricaCard 
-                titulo="Pendientes" valor={metricas.pendientes} icono={Clock} colorFondo="bg-gray-50" colorIcono="text-gray-600" 
-                activa={false} onClick={() => setPestanaActiva('Programación')}
+            <MetricaCard
+              titulo="Pendientes"
+              valor={metricas.pendientes}
+              icono={Clock}
+              colorFondo="bg-gray-50"
+              colorIcono="text-gray-600"
+              activa={false}
+              onClick={() => setPestanaActiva && setPestanaActiva('Programación')}
             />
-            <MetricaCard 
-              titulo="Aprobados" valor={metricas.aprobados} icono={CheckCircle} colorFondo="bg-green-50" colorIcono="text-green-600" 
-              activa={filtroDashboardAdmins === 'aprobados'} onClick={() => toggleFiltroMeticas('aprobados')}
+            <MetricaCard
+              titulo="Aprobados"
+              valor={metricas.aprobados}
+              icono={CheckCircle}
+              colorFondo="bg-green-50"
+              colorIcono="text-green-600"
+              activa={filtroDashboardAdmins === 'aprobados'}
+              onClick={() => toggleFiltroMeticas('aprobados')}
             />
-            <MetricaCard 
-              titulo="En Refuerzo" valor={metricas.refuerzo} icono={AlertTriangle} colorFondo="bg-orange-50" colorIcono="text-orange-600" 
-              activa={filtroDashboardAdmins === 'refuerzo'} onClick={() => toggleFiltroMeticas('refuerzo')}
+            <MetricaCard
+              titulo="En Refuerzo"
+              valor={metricas.refuerzo}
+              icono={AlertTriangle}
+              colorFondo="bg-orange-50"
+              colorIcono="text-orange-600"
+              activa={filtroDashboardAdmins === 'refuerzo'}
+              onClick={() => toggleFiltroMeticas('refuerzo')}
             />
-            <MetricaCard 
-              titulo="En Pausa" valor={metricas.pausa} icono={PauseCircle} colorFondo="bg-gray-100" colorIcono="text-gray-800" 
-              activa={false} onClick={() => {}} 
+            <MetricaCard
+              titulo="En Pausa"
+              valor={metricas.pausa}
+              icono={PauseCircle}
+              colorFondo="bg-gray-100"
+              colorIcono="text-gray-800"
+              activa={false}
+              onClick={() => {}}
             />
-            <MetricaCard 
-              titulo="No Cumplen" valor={metricas.rechazos} icono={AlertTriangle} colorFondo="bg-red-50" colorIcono="text-red-600" 
-              activa={filtroDashboardAdmins === 'rechazos'} onClick={() => toggleFiltroMeticas('rechazos')}
+            <MetricaCard
+              titulo="No Cumplen"
+              valor={metricas.rechazos}
+              icono={AlertTriangle}
+              colorFondo="bg-red-50"
+              colorIcono="text-red-600"
+              activa={filtroDashboardAdmins === 'rechazos'}
+              onClick={() => toggleFiltroMeticas('rechazos')}
             />
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                <FileText className="mr-2 text-gray-400" size={20} /> 
-                {filtroDashboardAdmins === 'todas' ? 'Últimas Evaluaciones Recientes' : `Evaluaciones: ${filtroDashboardAdmins.charAt(0).toUpperCase() + filtroDashboardAdmins.slice(1)}`}
+                <FileText className="mr-2 text-gray-400" size={20} />
+                {filtroDashboardAdmins === 'todas'
+                  ? 'Últimas Evaluaciones Recientes'
+                  : `Evaluaciones: ${filtroDashboardAdmins.charAt(0).toUpperCase() + filtroDashboardAdmins.slice(1)}`}
               </h2>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar participante, punto..." 
+                <input
+                  type="text"
+                  placeholder="Buscar participante, punto..."
                   value={busqueda}
                   onChange={manejarBusqueda}
                   className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-72"
@@ -372,22 +396,24 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                   {evaluacionesPaginadas.length === 0 ? (
                     <tr>
                       <td colSpan="6" className="p-8 text-center text-gray-500">
-                        {busqueda || filtroDashboardAdmins !== 'todas' ? 'No se encontraron resultados para los filtros aplicados' : 'No hay evaluaciones recientes'}
+                        {busqueda || filtroDashboardAdmins !== 'todas'
+                          ? 'No se encontraron resultados para los filtros aplicados'
+                          : 'No hay evaluaciones recientes'}
                       </td>
                     </tr>
                   ) : (
                     evaluacionesPaginadas.map(ev => {
                       const est = traducirEstado(ev.resultado_aprobacion)
-                      const estaTramitado = !!ev.participantes?.punto_fijo;
-                      const fAsig = ev.participantes?.fecha_programada ? new Date(ev.participantes.fecha_programada).toLocaleDateString() : '---';
-                      const fCap = ev.fecha_capacitacion ? new Date(ev.fecha_capacitacion).toLocaleDateString() : new Date(ev.creado_en).toLocaleDateString();
+                      const estaTramitado = !!ev.participantes?.punto_fijo
+                      const fAsig = ev.participantes?.fecha_programada ? new Date(ev.participantes.fecha_programada).toLocaleDateString() : '---'
+                      const fCap = ev.fecha_capacitacion ? new Date(ev.fecha_capacitacion).toLocaleDateString() : new Date(ev.creado_en).toLocaleDateString()
 
                       return (
                         <tr key={ev.id} className="hover:bg-gray-50 transition-colors">
                           <td className="p-4 font-bold text-gray-800">{ev.participantes?.nombres_apellidos}</td>
                           <td className="p-4 text-gray-600">{ev.usuarios?.nombre_completo}</td>
                           <td className="p-4 text-gray-600">
-                            <span className="flex items-center text-xs"><MapPin size={12} className="mr-1 text-gray-400"/> {ev.punto_metropolitana || 'Sin punto'}</span>
+                            <span className="flex items-center text-xs"><MapPin size={12} className="mr-1 text-gray-400" /> {ev.punto_metropolitana || 'Sin punto'}</span>
                           </td>
                           <td className="p-4">
                             <div className="flex flex-col gap-1.5 text-[11px] bg-gray-50 border border-gray-100 p-2 rounded-lg">
@@ -429,14 +455,14 @@ export default function InicioDashboard({ userName, setPestanaActiva }) {
                   Mostrando {(paginaActual - 1) * itemsPorPagina + 1} a {Math.min(paginaActual * itemsPorPagina, evaluacionesFiltradas.length)} de {evaluacionesFiltradas.length}
                 </span>
                 <div className="flex space-x-2">
-                  <button 
+                  <button
                     onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
                     disabled={paginaActual === 1}
                     className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft size={18} />
                   </button>
-                  <button 
+                  <button
                     onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
                     disabled={paginaActual === totalPaginas}
                     className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"

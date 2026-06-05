@@ -3,23 +3,34 @@ import { supabase } from '../supabaseClient'
 import { Eye, EyeOff } from 'lucide-react'
 
 export default function Login() {
+  // Estado para los campos del formulario
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false) // <--- NUEVO ESTADO
+  
+  // Controla si la contraseña se muestra como texto o como puntos
+  const [showPassword, setShowPassword] = useState(false)
+  
+  // Estado de carga mientras Supabase procesa el login
   const [loading, setLoading] = useState(false)
+  
+  // Mensaje de error si las credenciales son incorrectas
   const [error, setError] = useState(null)
 
   const handleLogin = async (e) => {
-    e.preventDefault()
+    e.preventDefault() // Evita que el formulario recargue la página
     setLoading(true)
     setError(null)
 
-    // Llamada a Supabase para iniciar sesión con correo y contraseña
+    // Le pedimos a Supabase que verifique el correo y contraseña.
+    // Si son correctos, Supabase devuelve un JWT (token de sesión)
+    // que queda guardado automáticamente en el navegador.
+    // App.jsx escucha este cambio con onAuthStateChange y redirige al dashboard.
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
+    // Si Supabase rechaza las credenciales, mostramos el error
     if (error) {
       setError(error.message)
     }
@@ -28,6 +39,7 @@ export default function Login() {
 
   return (
     <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+      {/* Encabezado con ícono y nombre del sistema */}
       <div className="text-center mb-8">
         <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,6 +51,7 @@ export default function Login() {
       </div>
 
       <form onSubmit={handleLogin} className="space-y-6">
+        {/* Campo de correo electrónico */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Correo Electrónico
@@ -53,13 +66,15 @@ export default function Login() {
           />
         </div>
 
+        {/* Campo de contraseña con botón para mostrar/ocultar */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Contraseña
           </label>
           <div className="relative">
+            {/* El type cambia dinámicamente según showPassword */}
             <input
-              type={showPassword ? "text" : "password"} // <--- ALTERNA ENTRE TEXTO Y CONTRASEÑA
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 pr-12 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
@@ -67,23 +82,22 @@ export default function Login() {
               required
             />
             
-            {/* --- BOTÓN DEL OJO --- */}
+            {/* Botón del ojo — type="button" es crítico para que no dispare el submit */}
             <button
-              type="button" // IMPORTANTE: type="button" para que no envíe el formulario al presionarlo
+              type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none transition-colors"
             >
-              {showPassword ? (
-                <EyeOff size={20} />
-              ) : (
-                <Eye size={20} />
-              )}
+              {/* Alterna entre el ícono de ojo abierto y cerrado */}
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
         </div>
 
+        {/* Mensaje de error — solo se muestra si Supabase devuelve un error */}
         {error && (
           <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm text-center">
+            {/* Traducimos el error más común al español */}
             {error === 'Invalid login credentials' ? 'Credenciales incorrectas' : error}
           </div>
         )}

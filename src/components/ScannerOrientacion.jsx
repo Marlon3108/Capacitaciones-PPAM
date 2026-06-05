@@ -1,328 +1,493 @@
-import { useState, useEffect, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
-import { supabase } from '../supabaseClient';
-import { Lock, Camera, X, Eye, EyeOff, Search, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Html5QrcodeScanner } from "html5-qrcode";
+import { supabase } from "../supabaseClient";
+import {
+  QrCode,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  User,
+  Building2,
+  RefreshCw,
+  Camera,
+  CameraOff,
+} from "lucide-react";
 
-// Contraseña quemada para acomodadores externos
-const PASSWORD_ACCESO = 'Capacit4**';
-
-export default function ScannerOrientacion({ onCerrar }) {
-  const [autenticado, setAutenticado] = useState(false);
-  const [password, setPassword] = useState('');
-  const [mostrarPassword, setMostrarPassword] = useState(false)
-  const [errorPassword, setErrorPassword] = useState(false);
-
-  // Estados del escáner
+export default function ScannerOrientacion() {
+  const [codigo, setCodigo] = useState("");
+  const [busqueda, setBusqueda] = useState("");
+  const [participante, setParticipante] = useState(null);
   const [cargando, setCargando] = useState(false);
-  const [escaneando, setEscaneando] = useState(true);
-  const [mostrarPopup, setMostrarPopup] = useState(false);
-  const [estadoPopup, setEstadoPopup] = useState('success'); // 'success', 'error', 'warning'
-  const [mensajePopup, setMensajePopup] = useState({ titulo: '', detalle: '' });
-  const [datosParticipante, setDatosParticipante] = useState(null);
-  const [busquedaManual, setBusquedaManual] = useState('');
-  
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [camaraActiva, setCamaraActiva] = useState(false);
+  const [camaraLista, setCamaraLista] = useState(false);
+  const [errorCamara, setErrorCamara] = useState("");
+
   const scannerRef = useRef(null);
+  const ultimoCodigoRef = useRef("");
+  const procesandoScanRef = useRef(false);
 
-  // Referencias para los sonidos (Opcional, puedes quitarlo si no tienes los mp3)
-  const sonidoExito = useRef(typeof Audio !== "undefined" ? new Audio('/success.mp3') : null);
-  const sonidoError = useRef(typeof Audio !== "undefined" ? new Audio('/error.mp3') : null);
+  const valorBusqueda = useMemo(
+    () => (codigo || busqueda).trim(),
+    [codigo, busqueda],
+  );
 
-  const reproducirSonido = (tipo) => {
-    try {
-      if (tipo === 'success' && sonidoExito.current) {
-        sonidoExito.current.currentTime = 0;
-        sonidoExito.current.play().catch(e => console.log("Autoplay bloqueado", e));
-      } else if (tipo === 'error' && sonidoError.current) {
-        sonidoError.current.currentTime = 0;
-        sonidoError.current.play().catch(e => console.log("Autoplay bloqueado", e));
-      }
-    } catch (err) {
-      console.log("Error de audio:", err);
-    }
-  };
-
-  const verificarPassword = (e) => {
-    e.preventDefault();
-    if (password === PASSWORD_ACCESO) {
-      setAutenticado(true);
-    } else {
-      setErrorPassword(true);
-      setPassword('');
-      setTimeout(() => setErrorPassword(false), 3000);
-    }
-  };
-
-  // Inicializar escáner cuando el usuario se autentica
-  useEffect(() => {
-    if (!autenticado) return;
-
-    // Pequeño delay para asegurar que el div del render exista
-    setTimeout(() => {
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5QrcodeScanner(
-          "reader",
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          false
-        );
-        scannerRef.current.render(onScanSuccess, onScanFailure);
-      }
-    }, 100);
-
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => console.error("Error limpiando scanner", error));
-        scannerRef.current = null;
-      }
-    };
-  }, [autenticado]);
-
-  const mostrarResultado = (participante, tipo, titulo, detalle) => {
-    setDatosParticipante(participante);
-    setEstadoPopup(tipo);
-    setMensajePopup({ titulo, detalle });
-    setMostrarPopup(true);
-    setEscaneando(false);
-    reproducirSonido(tipo);
-  };
-
-  const procesarAsistencia = async (codigoOTexto, esManual = false) => {
-    if (cargando) return;
-    setCargando(true);
-    
-    // Si viene del escáner, lo pausamos temporalmente
-    if (!esManual && scannerRef.current && scannerRef.current.getState() === 2) {
-      scannerRef.current.pause(true);
+  const buscarParticipante = useCallback(async (valorRecibido) => {
+    const valor = (valorRecibido || "").trim();
+    if (!valor) {
+      setError("Ingresa o escanea un código antes de buscar.");
+      setParticipante(null);
+      return;
     }
 
     try {
-      // 1. Buscar al participante por código único (o nombre/documento si es manual)
-      let query = supabase.from('participantes').select('*');
-      
-      if (esManual) {
-        // Búsqueda manual por nombre o código
-        query = query.or(`codigounico.ilike.%${codigoOTexto}%,nombresapellidos.ilike.%${codigoOTexto}%`);
-      } else {
-        // Búsqueda exacta del escáner
-        query = query.eq('codigounico', codigoOTexto);
-      }
+      setCargando(true);
+      setError("");
+      setErrorCamara("");
+      setParticipante(null);
 
-      const { data, error } = await query;
+      const { data, error } = await supabase
+        .from("participantes")
+        .select(
+          "id, nombres_apellidos, congregacion, qr_token, categoria, estado, orientacion_escaneado, orientacion_fecha_escaneo",
+        )
+        .eq("categoria", "nuevo_orientacion")
+        .eq("qr_token", valor)
+        .maybeSingle();
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        mostrarResultado(null, 'error', 'Código Inválido', 'Este código no pertenece a ningún participante registrado.');
-        setCargando(false);
+      if (!data) {
+        setError(
+          "No encontramos un participante de orientación con ese código.",
+        );
         return;
       }
 
-      // Si es búsqueda manual y arroja varios resultados, aquí deberías manejar una lista
-      // Por simplicidad, tomaremos el primero que coincida
-      const participante = data[0];
-
-      // 2. Verificamos si ya asistió
-      if (participante.asistio_orientacion) {
-        mostrarResultado(participante, 'warning', 'Ya registrado', `${participante.nombresapellidos} ya tenía registrada su asistencia a la orientación.`);
-        setCargando(false);
-        return;
-      }
-
-      // 3. Actualizamos los datos requeridos en la base de datos
-      const { error: updateError } = await supabase
-        .from('participantes')
-        .update({ 
-          asistio_orientacion: true,
-          categoria: 'nuevo',
-          es_prioridad: true,
-          estado: 'pendiente' // Aseguramos que quede pendiente para capacitación
-        })
-        .eq('id', participante.id);
-
-      if (updateError) throw updateError;
-
-      // Actualizamos visualmente el objeto para el popup
-      participante.asistio_orientacion = true;
-
-      mostrarResultado(participante, 'success', 'Asistencia Confirmada', `${participante.nombresapellidos} está listo para ser programado en punto.`);
-
+      setParticipante(data);
     } catch (err) {
-      console.error("Error al procesar:", err);
-      mostrarResultado(null, 'error', 'Error de conexión', 'Hubo un problema comunicándose con el servidor.');
+      console.error("Error buscando participante:", err);
+      setError("Ocurrió un problema consultando la base de datos.");
     } finally {
       setCargando(false);
-      setBusquedaManual('');
+      procesandoScanRef.current = false;
+    }
+  }, []);
+
+  const apagarCamara = useCallback(() => {
+    setCamaraLista(false);
+    const scanner = scannerRef.current;
+    if (scanner) {
+      scannerRef.current = null;
+      try {
+        Promise.resolve()
+          .then(() => scanner.clear())
+          .catch((err) => {
+            console.error("Error limpiando scanner:", err);
+          });
+      } catch (err) {
+        console.error("Error limpiando scanner:", err);
+      }
+    }
+  }, []);
+
+  const manejarScanExitoso = useCallback(
+    (decodedText) => {
+      const codigoDetectado = (decodedText || "").trim();
+      if (
+        !codigoDetectado ||
+        procesandoScanRef.current ||
+        ultimoCodigoRef.current === codigoDetectado
+      )
+        return;
+      procesandoScanRef.current = true;
+      ultimoCodigoRef.current = codigoDetectado;
+      setCodigo(codigoDetectado);
+      setBusqueda("");
+      buscarParticipante(codigoDetectado);
+      setTimeout(() => {
+        ultimoCodigoRef.current = "";
+      }, 2500);
+    },
+    [buscarParticipante],
+  );
+
+  const manejarErrorScan = useCallback(() => {}, []);
+
+  useEffect(() => {
+    if (!camaraActiva) {
+      apagarCamara();
+      return;
+    }
+
+    let cancelado = false;
+
+    const iniciarScanner = async () => {
+      try {
+        setErrorCamara("");
+        setCamaraLista(false);
+
+        const instancia = new Html5QrcodeScanner(
+          "reader-orientacion",
+          {
+            fps: 10,
+            qrbox: { width: 240, height: 240 },
+            aspectRatio: 1.3333333,
+            rememberLastUsedCamera: true,
+            supportedScanTypes: [0],
+          },
+          false,
+        );
+
+        scannerRef.current = instancia;
+        instancia.render(
+          (decodedText) => {
+            if (!cancelado) {
+              setCamaraLista(true);
+              manejarScanExitoso(decodedText);
+            }
+          },
+          (scanError) => {
+            if (!cancelado) manejarErrorScan(scanError);
+          },
+        );
+      } catch (err) {
+        console.error("Error iniciando cámara:", err);
+        setErrorCamara(
+          "No fue posible iniciar la cámara. Verifica permisos y que estés en HTTPS o localhost.",
+        );
+        setCamaraActiva(false);
+      }
+    };
+
+    const timer = setTimeout(iniciarScanner, 150);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+      apagarCamara();
+    };
+  }, [camaraActiva, apagarCamara, manejarErrorScan, manejarScanExitoso]);
+
+  useEffect(() => {
+    const manejarEnterGlobal = (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (e.key === "Enter" && tag !== "textarea") {
+        e.preventDefault();
+        buscarParticipante(valorBusqueda);
+      }
+    };
+
+    window.addEventListener("keydown", manejarEnterGlobal);
+    return () => window.removeEventListener("keydown", manejarEnterGlobal);
+  }, [buscarParticipante, valorBusqueda]);
+
+  const marcarIngreso = async () => {
+    if (!participante?.id) return;
+
+    try {
+      setGuardando(true);
+      setError("");
+      const fechaEscaneo = new Date().toISOString();
+      const { error } = await supabase
+        .from("participantes")
+        .update({
+          orientacion_escaneado: true,
+          orientacion_fecha_escaneo: fechaEscaneo,
+          categoria: "pendiente_programacion_punto",
+        })
+        .eq("id", participante.id);
+
+      if (error) throw error;
+
+      setParticipante((prev) => ({
+        ...prev,
+        orientacion_escaneado: true,
+        orientacion_fecha_escaneo: fechaEscaneo,
+        categoria: "pendiente_programacion_punto",
+      }));
+    } catch (err) {
+      console.error("Error marcando ingreso:", err);
+      setError("No fue posible registrar el ingreso.");
+    } finally {
+      setGuardando(false);
     }
   };
 
-  async function onScanSuccess(decodedText) {
-    // El texto decodificado será directamente el codigounico (Ej: A4B9X2)
-    const codigoUnico = decodedText.toString().trim();
-    await procesarAsistencia(codigoUnico, false);
-  }
+  const reiniciarBusqueda = async () => {
+    setCodigo("");
+    setBusqueda("");
+    setParticipante(null);
+    setError("");
+    setErrorCamara("");
+    procesandoScanRef.current = false;
+    ultimoCodigoRef.current = "";
+  };
 
-  function onScanFailure(error) {
-    // Ignoramos errores de lectura continua (fondo, luz, etc)
-  }
-
-  const cerrarPopupYContinuar = () => {
-    setMostrarPopup(false);
-    setDatosParticipante(null);
-    setEscaneando(true);
-    
-    if (scannerRef.current && scannerRef.current.getState() === 3) {
-      scannerRef.current.resume();
+  const alternarCamara = async () => {
+    if (camaraActiva) {
+      setCamaraActiva(false);
+      await apagarCamara();
+    } else {
+      setCamaraActiva(true);
     }
   };
 
-  // --- VISTA DE LOGIN ---
-  if (!autenticado) {
-    return (
-      <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
-        <div className="absolute top-4 right-4">
-          <button onClick={onCerrar} className="text-white/70 hover:text-white p-2">
-            <X size={32} />
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 pb-10">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Scanner Orientación
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Escanea con cámara o valida manualmente el qr_token para registrar
+            ingresos.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={alternarCamara}
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium border ${camaraActiva ? "bg-red-50 border-red-200 text-red-700 hover:bg-red-100" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+          >
+            {camaraActiva ? <CameraOff size={18} /> : <Camera size={18} />}
+            {camaraActiva ? "Apagar cámara" : "Encender cámara"}
+          </button>
+          <button
+            onClick={reiniciarBusqueda}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium"
+          >
+            <RefreshCw size={18} /> Nueva búsqueda
           </button>
         </div>
-        
-        <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
-          <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Lock size={40} />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Escáner de Orientación</h2>
-          <p className="text-gray-500 mb-8 text-sm">
-            Ingresa la contraseña de acomodador para habilitar la cámara.
-          </p>
-          
-          <form onSubmit={verificarPassword} className="space-y-4">
-            
-            {/* AQUÍ ESTÁ EL NUEVO DIV DEL INPUT CON EL OJITO */}
-            <div className="relative w-full">
-              <input 
-                type={mostrarPassword ? "text" : "password"} 
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Contraseña de acceso"
-                className={`w-full p-4 border-2 rounded-xl text-center text-lg outline-none transition-colors pr-12 ${
-                  errorPassword ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:border-blue-500'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setMostrarPassword(!mostrarPassword)}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
-              >
-                {mostrarPassword ? <EyeOff size={24} /> : <Eye size={24} />}
-              </button>
-            </div>
-            {/* FIN DEL NUEVO DIV */}
+      </div>
 
-            {errorPassword && <p className="text-red-500 text-sm font-bold animate-pulse">Contraseña incorrecta</p>}
-            
-            <button 
-              type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg flex justify-center items-center"
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-1 space-y-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <QrCode className="text-blue-600" size={20} />
+              <h2 className="text-lg font-bold text-gray-800">
+                Escaneo y validación
+              </h2>
+            </div>
+
+            <div className="rounded-2xl border border-dashed border-blue-200 bg-slate-50 p-3">
+              <div
+                id="reader-orientacion"
+                className="min-h-[280px] overflow-hidden rounded-xl"
+              />
+              {!camaraActiva && (
+                <div className="mt-3 text-sm text-gray-500 text-center">
+                  La cámara está apagada. Usa el botón{" "}
+                  <span className="font-semibold">Encender cámara</span> para
+                  escanear desde este dispositivo.
+                </div>
+              )}
+              {camaraActiva && !camaraLista && !errorCamara && (
+                <div className="mt-3 text-sm text-blue-600 text-center font-medium">
+                  Esperando permisos y selección de cámara...
+                </div>
+              )}
+              {errorCamara && (
+                <div className="mt-3 text-sm text-red-600 text-center font-medium">
+                  {errorCamara}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-2">
+                Código leído o digitado
+              </label>
+              <input
+                type="text"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                placeholder="Ej: ORI-2026-001"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-2">
+                Búsqueda manual
+              </label>
+              <div className="relative">
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  size={18}
+                />
+                <input
+                  type="text"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Pega aquí el qr_token"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => buscarParticipante(valorBusqueda)}
+              disabled={cargando || !valorBusqueda}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2"
             >
-              <Camera size={20} className="mr-2" /> Activar Cámara
+              <Search size={18} />{" "}
+              {cargando ? "Consultando..." : "Validar acceso"}
             </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
-  // --- VISTA DEL ESCÁNER ---
-  return (
-    <div className={`fixed inset-0 z-50 bg-gray-100 flex flex-col font-sans ${mostrarPopup ? 'mostrar-popup' : ''}`}>
-      {/* Header superior */}
-      <div className="bg-blue-900 text-white p-4 shadow-md flex items-center justify-between z-10 relative">
-        <div>
-          <h1 className="text-xl font-bold">DC APP - Escáner</h1>
-          <p className="text-xs text-blue-200">Reunión de Orientación</p>
-        </div>
-        <button onClick={onCerrar} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-colors text-sm">
-          Cerrar
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center">
-        <div className="w-full max-w-md bg-white rounded-xl shadow-lg overflow-y-auto max-h-[90vh] relative pb-6 my-4">
-          <div className="bg-slate-100 p-3 text-center border-b border-gray-200">
-            <p className="text-sm font-bold text-gray-700">Apunta la cámara al código QR de la invitación</p>
-          </div>
-          
-          {/* Contenedor de la cámara */}
-          <div id="reader" className="w-full min-h-[300px] border-b-4 border-blue-500"></div>
-          
-          {/* Ingreso manual */}
-          <div className="p-4 bg-gray-50">
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-              ¿No lee el QR? Ingreso Manual
-            </label>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                placeholder="Escribe el código único (Ej: A4B9X2)" 
-                value={busquedaManual}
-                onChange={(e) => setBusquedaManual(e.target.value.toUpperCase())}
-                className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 outline-none text-sm font-mono uppercase"
-              />
-              <button 
-                onClick={() => procesarAsistencia(busquedaManual, true)}
-                disabled={busquedaManual.length < 3 || cargando}
-                className="bg-gray-800 text-white px-4 rounded-xl disabled:opacity-50 flex items-center"
-              >
-                <Search size={20} />
-              </button>
-            </div>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              El lector de cámara envía automáticamente el resultado al
+              consultar el <span className="font-semibold">qr_token</span>. Este
+              módulo solo valida participantes con categoría{" "}
+              <span className="font-semibold">nuevo_orientacion</span>.
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* POPUP DE RESULTADO */}
-      {mostrarPopup && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center flex flex-col items-center">
-            
-            <div className="mb-4">
-              {estadoPopup === 'success' && <CheckCircle2 size={80} className="text-green-500 mx-auto" />}
-              {estadoPopup === 'warning' && <AlertCircle size={80} className="text-yellow-500 mx-auto" />}
-              {estadoPopup === 'error' && <AlertCircle size={80} className="text-red-500 mx-auto" />}
-            </div>
+        <div className="xl:col-span-2">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 min-h-[520px]">
+            {error ? (
+              <div className="h-full min-h-[460px] flex items-center justify-center">
+                <div className="max-w-md text-center">
+                  <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-red-50 flex items-center justify-center">
+                    <AlertCircle className="text-red-500" size={32} />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-800">
+                    Acceso no validado
+                  </h3>
+                  <p className="text-gray-500 mt-2">{error}</p>
+                </div>
+              </div>
+            ) : participante ? (
+              <div className="space-y-6">
+                <div
+                  className={`rounded-2xl p-5 border ${participante.orientacion_escaneado ? "bg-green-50 border-green-200" : "bg-blue-50 border-blue-200"}`}
+                >
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center ${participante.orientacion_escaneado ? "bg-green-100" : "bg-blue-100"}`}
+                      >
+                        <CheckCircle2
+                          className={
+                            participante.orientacion_escaneado
+                              ? "text-green-700"
+                              : "text-blue-700"
+                          }
+                          size={28}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                          Estado del acceso
+                        </p>
+                        <h2 className="text-2xl font-bold text-gray-800">
+                          {participante.orientacion_escaneado
+                            ? "Ingreso registrado"
+                            : "Participante válido"}
+                        </h2>
+                      </div>
+                    </div>
+                    <div
+                      className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold ${participante.orientacion_escaneado ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
+                    >
+                      {participante.orientacion_escaneado
+                        ? "Ya escaneado"
+                        : "Pendiente de ingreso"}
+                    </div>
+                  </div>
+                </div>
 
-            <h2 className={`text-2xl font-black mb-2 ${
-              estadoPopup === 'success' ? 'text-green-600' : 
-              estadoPopup === 'warning' ? 'text-yellow-600' : 'text-red-600'
-            }`}>
-              {mensajePopup.titulo}
-            </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <User className="text-gray-600" size={18} />
+                      <h3 className="font-bold text-gray-800">Participante</h3>
+                    </div>
+                    <p className="text-xl font-bold text-gray-900">
+                      {participante.nombres_apellidos}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Categoría: {participante.categoria}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Estado general: {participante.estado || "Sin estado"}
+                    </p>
+                  </div>
 
-            <p className="text-gray-600 mb-6">{mensajePopup.detalle}</p>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Building2 className="text-gray-600" size={18} />
+                      <h3 className="font-bold text-gray-800">
+                        Congregación y código
+                      </h3>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">
+                      {participante.congregacion || "Sin congregación"}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      qr_token: {participante.qr_token}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Último escaneo:{" "}
+                      {participante.orientacion_fecha_escaneo
+                        ? new Date(
+                            participante.orientacion_fecha_escaneo,
+                          ).toLocaleString("es-CO")
+                        : "Aún no registrado"}
+                    </p>
+                  </div>
+                </div>
 
-            {datosParticipante && (
-              <div className="bg-gray-50 w-full p-4 rounded-xl border border-gray-200 mb-6 text-left">
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Participante</p>
-                <p className="font-bold text-gray-900 text-lg leading-tight">{datosParticipante.nombresapellidos}</p>
-                <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
-                  <span className="font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{datosParticipante.codigounico}</span>
-                  <span>•</span>
-                  <span>{datosParticipante.congregacion}</span>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <button
+                    onClick={marcarIngreso}
+                    disabled={guardando || participante.orientacion_escaneado}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 size={20} />
+                    {participante.orientacion_escaneado
+                      ? "Ingreso ya registrado"
+                      : guardando
+                        ? "Guardando..."
+                        : "Registrar ingreso"}
+                  </button>
+                  <button
+                    onClick={reiniciarBusqueda}
+                    className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-3 px-4 rounded-xl"
+                  >
+                    Escanear otro participante
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full min-h-[460px] flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
+                    <QrCode className="text-blue-600" size={32} />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-800">
+                    Esperando escaneo
+                  </h3>
+                  <p className="text-gray-500 mt-2">
+                    Enciende la cámara o pega manualmente el{" "}
+                    <span className="font-semibold">qr_token</span> para validar
+                    el acceso del invitado a orientación.
+                  </p>
                 </div>
               </div>
             )}
-
-            <button 
-              onClick={cerrarPopupYContinuar}
-              className={`w-full py-4 rounded-xl text-white font-bold text-lg shadow-md transition-transform hover:scale-105 ${
-                estadoPopup === 'success' ? 'bg-green-600 hover:bg-green-700' : 
-                estadoPopup === 'warning' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-red-600 hover:bg-red-700'
-              }`}
-            >
-              Continuar Escaneando
-            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

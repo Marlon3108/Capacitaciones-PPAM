@@ -18,63 +18,60 @@ export default function TableroParticipantes() {
   const [busqueda, setBusqueda] = useState('')
   const [filtroCategoria, setFiltroCategoria] = useState('todos')
 
-  // Cargar los participantes manualmente o al inicio
   const cargarParticipantes = async (modoManual = false) => {
     if (modoManual) setActualizando(true)
-    
+
     const { data, error } = await supabase
       .from('participantes')
       .select('*')
       .order('creado_en', { ascending: false })
 
     if (error) {
-      console.error("Error cargando:", error)
+      console.error('Error cargando:', error)
     } else if (data) {
       setParticipantes(data)
     }
-    
+
     setCargando(false)
-    if (modoManual) setTimeout(() => setActualizando(false), 500) // Pequeño delay visual
+    if (modoManual) setTimeout(() => setActualizando(false), 500)
   }
 
   useEffect(() => {
-    // 1. Carga inicial
-    cargarParticipantes()
+    const timer = setTimeout(() => {
+      void cargarParticipantes()
+    }, 0)
 
-    // 2. Suscripción a cambios en tiempo real en la tabla 'participantes'
+    return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
     const channel = supabase
       .channel('cambios-participantes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'participantes' },
-        (payload) => {
-          console.log("¡Cambio detectado en la BD!", payload)
-          // Cuando detecta un cambio (INSERT, UPDATE o DELETE), recarga la tabla
-          cargarParticipantes()
+        () => {
+          void cargarParticipantes()
         }
       )
       .subscribe()
 
-    // 3. Limpiar suscripción cuando se cierra el componente
     return () => {
       supabase.removeChannel(channel)
     }
   }, [])
 
-  // Filtros
   const participantesFiltrados = participantes.filter(p => {
-    const pasaBusqueda = 
+    const pasaBusqueda =
       p.nombres_apellidos?.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.codigo_unico?.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.ciudad?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      p.punto_fijo?.toLowerCase().includes(busqueda.toLowerCase());
+      p.punto_fijo?.toLowerCase().includes(busqueda.toLowerCase())
 
-    const pasaCategoria = filtroCategoria === 'todos' || p.categoria === filtroCategoria;
-
-    return pasaBusqueda && pasaCategoria;
+    const pasaCategoria = filtroCategoria === 'todos' || p.categoria === filtroCategoria
+    return pasaBusqueda && pasaCategoria
   })
 
-  // Etiquetas
   const renderBadgeCategoria = (categoria, puntoFijo) => {
     if (categoria === 'nuevo' || categoria === 'nuevo_orientacion') {
       return (
@@ -83,6 +80,15 @@ export default function TableroParticipantes() {
         </span>
       )
     }
+
+    if (categoria === 'pendiente_programacion_punto') {
+      return (
+        <span className="flex items-center text-[10px] font-bold bg-violet-100 text-violet-800 px-2 py-1 rounded w-fit mt-2">
+          <MapPin size={10} className="mr-1 flex-shrink-0" /> PENDIENTE PUNTO
+        </span>
+      )
+    }
+
     if (categoria === 'viejo_punto_fijo') {
       return (
         <span className="flex items-center text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded w-fit mt-2 truncate max-w-[200px]">
@@ -90,6 +96,7 @@ export default function TableroParticipantes() {
         </span>
       )
     }
+
     if (categoria === 'viejo_sin_punto') {
       return (
         <span className="flex items-center text-[10px] font-bold bg-gray-200 text-gray-700 px-2 py-1 rounded w-fit mt-2">
@@ -97,7 +104,8 @@ export default function TableroParticipantes() {
         </span>
       )
     }
-    return null;
+
+    return null
   }
 
   const TarjetaParticipante = ({ participante }) => (
@@ -108,14 +116,14 @@ export default function TableroParticipantes() {
           {participante.codigo_unico}
         </span>
       </div>
-      
+
       {renderBadgeCategoria(participante.categoria, participante.punto_fijo)}
 
       <div className="flex flex-col text-xs text-gray-500 mt-3 space-y-1 flex-1">
         <span>📍 {participante.ciudad}</span>
         <span>🏛️ {participante.congregacion}</span>
       </div>
-      
+
       <div className="text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-50 flex justify-between items-center">
         <span>Ingreso:</span>
         <span>{new Date(participante.creado_en).toLocaleDateString()}</span>
@@ -130,14 +138,13 @@ export default function TableroParticipantes() {
           <div>
             <h2 className="text-2xl font-bold text-gray-800 flex items-center">
               Gestión de Participantes
-              {/* BOTÓN DE REFRESCAR MANUAL */}
-              <button 
+              <button
                 onClick={() => cargarParticipantes(true)}
                 disabled={actualizando}
                 className="ml-4 p-1.5 bg-white border border-gray-200 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                 title="Actualizar datos manualmente"
               >
-                <RefreshCcw size={16} className={actualizando ? "animate-spin text-blue-600" : ""} />
+                <RefreshCcw size={16} className={actualizando ? 'animate-spin text-blue-600' : ''} />
               </button>
             </h2>
             <p className="text-gray-500 text-sm mt-1">Supervisa el estado y ciclo de vida de los integrantes.</p>
@@ -145,9 +152,9 @@ export default function TableroParticipantes() {
 
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Buscar por nombre, ciudad o punto..." 
+            <input
+              type="text"
+              placeholder="Buscar por nombre, ciudad o punto..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -158,26 +165,29 @@ export default function TableroParticipantes() {
         <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-xl border border-gray-200 shadow-sm w-fit">
           <Filter size={16} className="text-gray-400 ml-2 mr-1" />
           <span className="text-xs text-gray-500 font-medium mr-2">Filtros:</span>
-          
-          <button 
+
+          <button
             onClick={() => setFiltroCategoria('todos')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filtroCategoria === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             Todos
           </button>
-          <button 
+
+          <button
             onClick={() => setFiltroCategoria('nuevo')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center ${filtroCategoria === 'nuevo' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
           >
             <Star size={12} className="mr-1" /> Nuevos
           </button>
-          <button 
+
+          <button
             onClick={() => setFiltroCategoria('viejo_punto_fijo')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center ${filtroCategoria === 'viejo_punto_fijo' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
           >
             <MapPin size={12} className="mr-1" /> Antiguos (Fijo)
           </button>
-          <button 
+
+          <button
             onClick={() => setFiltroCategoria('viejo_sin_punto')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filtroCategoria === 'viejo_sin_punto' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
           >
