@@ -149,7 +149,7 @@ export default function DashboardLayout({ userEmail }) {
     {
       name: "Nuevos Participantes",
       icon: FileSpreadsheet,
-      rolesPermitidos: ["administrador"],
+      rolesPermitidos: ["administrador", "escritorio"],
     },
     {
       name: "Configuración",
