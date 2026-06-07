@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import * as XLSX from "xlsx";
 import { supabase } from "../supabaseClient";
 import {
   QrCode,
@@ -17,6 +18,10 @@ import {
   RefreshCw,
   Camera,
   CameraOff,
+  Users,
+  BarChart3,
+  FileSpreadsheet,
+  Printer,
 } from "lucide-react";
 
 export default function ScannerOrientacion() {
@@ -29,6 +34,17 @@ export default function ScannerOrientacion() {
   const [camaraActiva, setCamaraActiva] = useState(false);
   const [camaraLista, setCamaraLista] = useState(false);
   const [errorCamara, setErrorCamara] = useState("");
+  const [metricas, setMetricas] = useState({
+    totalInvitados: 0,
+    asistidos: 0,
+    faltantes: 0,
+    porcentajeAsistencia: 0,
+    porcentajeFaltantes: 0,
+    ultimosIngresos: [],
+  });
+  const [cargandoMetricas, setCargandoMetricas] = useState(true);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
+  const [exportandoPdf, setExportandoPdf] = useState(false);
 
   const scannerRef = useRef(null);
   const ultimoCodigoRef = useRef("");
@@ -38,6 +54,46 @@ export default function ScannerOrientacion() {
     () => (codigo || busqueda).trim(),
     [codigo, busqueda],
   );
+
+  const cargarMetricas = useCallback(async () => {
+    try {
+      setCargandoMetricas(true);
+      const { data, error } = await supabase
+        .from("participantes")
+        .select(
+          "id, nombres_apellidos, congregacion, qr_token, categoria, estado, orientacion_escaneado, orientacion_fecha_escaneo",
+        )
+        .in("categoria", ["nuevo_orientacion", "pendiente_programacion_punto"])
+        .order("orientacion_fecha_escaneo", { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      const lista = data || [];
+      const asistidos = lista.filter((p) => p.orientacion_escaneado === true);
+      const pendientes = lista.filter(
+        (p) => p.categoria === "nuevo_orientacion" && !p.orientacion_escaneado,
+      );
+      const totalInvitados = asistidos.length + pendientes.length;
+      const totalAsistidos = asistidos.length;
+      const totalFaltantes = Math.max(totalInvitados - totalAsistidos, 0);
+      const porcentajeAsistencia = totalInvitados
+        ? Math.round((totalAsistidos / totalInvitados) * 100)
+        : 0;
+      const porcentajeFaltantes = totalInvitados
+        ? Math.round((totalFaltantes / totalInvitados) * 100)
+        : 0;
+      setMetricas({
+        totalInvitados,
+        asistidos: totalAsistidos,
+        faltantes: totalFaltantes,
+        porcentajeAsistencia,
+        porcentajeFaltantes,
+        ultimosIngresos: asistidos.slice(0, 8),
+      });
+    } catch (err) {
+      console.error("Error cargando métricas:", err);
+    } finally {
+      setCargandoMetricas(false);
+    }
+  }, []);
 
   const buscarParticipante = useCallback(async (valorRecibido) => {
     const valor = (valorRecibido || "").trim();
@@ -120,6 +176,28 @@ export default function ScannerOrientacion() {
   );
 
   const manejarErrorScan = useCallback(() => {}, []);
+
+  useEffect(() => {
+    cargarMetricas();
+    const channel = supabase
+      .channel("scanner-orientacion-metricas")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "participantes",
+        },
+        () => {
+          cargarMetricas();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [cargarMetricas]);
 
   useEffect(() => {
     if (!camaraActiva) {
@@ -212,6 +290,7 @@ export default function ScannerOrientacion() {
         orientacion_fecha_escaneo: fechaEscaneo,
         categoria: "pendiente_programacion_punto",
       }));
+      await cargarMetricas();
     } catch (err) {
       console.error("Error marcando ingreso:", err);
       setError("No fue posible registrar el ingreso.");
@@ -236,6 +315,145 @@ export default function ScannerOrientacion() {
       await apagarCamara();
     } else {
       setCamaraActiva(true);
+    }
+  };
+
+  const exportarExcelResumen = async () => {
+    try {
+      setExportandoExcel(true);
+      const { data, error } = await supabase
+        .from("participantes")
+        .select(
+          "nombres_apellidos, congregacion, qr_token, categoria, estado, orientacion_escaneado, orientacion_fecha_escaneo",
+        )
+        .in("categoria", ["nuevo_orientacion", "pendiente_programacion_punto"])
+        .order("nombres_apellidos", { ascending: true });
+
+      if (error) throw error;
+
+      const lista = data || [];
+      const filasDetalle = lista.map((p) => ({
+        Participante: p.nombres_apellidos || "",
+        Congregacion: p.congregacion || "",
+        QR_Token: p.qr_token || "",
+        Categoria_Actual: p.categoria || "",
+        Estado_General: p.estado || "",
+        Asistio_Orientacion: p.orientacion_escaneado ? "SI" : "NO",
+        Fecha_Escaneo: p.orientacion_fecha_escaneo
+          ? new Date(p.orientacion_fecha_escaneo).toLocaleString("es-CO")
+          : "",
+      }));
+
+      const filasResumen = [
+        { Indicador: "Total invitados", Valor: metricas.totalInvitados },
+        { Indicador: "Asistidos", Valor: metricas.asistidos },
+        { Indicador: "Faltantes", Valor: metricas.faltantes },
+        { Indicador: "% asistencia", Valor: `${metricas.porcentajeAsistencia}%` },
+        { Indicador: "% faltantes", Valor: `${metricas.porcentajeFaltantes}%` },
+        { Indicador: "Fecha reporte", Valor: new Date().toLocaleString("es-CO") },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const wsResumen = XLSX.utils.json_to_sheet(filasResumen);
+      const wsDetalle = XLSX.utils.json_to_sheet(filasDetalle);
+      XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
+      XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle asistentes");
+      XLSX.writeFile(
+        wb,
+        `Reporte_Orientacion_${new Date().toISOString().split("T")[0]}.xlsx`,
+      );
+    } catch (err) {
+      console.error("Error exportando Excel:", err);
+      setError("No fue posible generar el archivo Excel.");
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
+
+  const exportarPdfResumen = async () => {
+    try {
+      setExportandoPdf(true);
+      const porcentaje = metricas.porcentajeAsistencia;
+      const porcentajeFaltan = metricas.porcentajeFaltantes;
+      const barraAsistencia = `
+      <div style="margin-top: 10px;">
+        <div style="display:flex; height:22px; border-radius:999px; overflow:hidden; background:#e5e7eb;">
+          <div style="width:${porcentaje}%; background:#16a34a;"></div>
+          <div style="width:${porcentajeFaltan}%; background:#f59e0b;"></div>
+        </div>
+      </div>
+    `;
+      const html = `
+      <html>
+        <head>
+          <title>Resumen Orientación</title>
+          <style>
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; font-family: Arial, sans-serif; }
+            body { padding: 32px; color: #1f2937; }
+            .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
+            .title { font-size: 28px; font-weight: 700; margin: 0; color: #1d4ed8; }
+            .subtitle { margin-top: 6px; color: #6b7280; font-size: 14px; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 24px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 14px; padding: 18px; background: #f9fafb; }
+            .label { font-size: 12px; text-transform: uppercase; color: #6b7280; margin-bottom: 6px; font-weight: bold; }
+            .value { font-size: 30px; font-weight: 700; }
+            .section { margin-top: 28px; }
+            .list { margin-top: 14px; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+            .row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+            .row:last-child { border-bottom: none; }
+            .muted { color: #6b7280; }
+            @media print { @page { size: A4; margin: 16mm; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 class="title">Resumen gráfico de orientación</h1>
+            <div class="subtitle">Generado el ${new Date().toLocaleString("es-CO")}</div>
+          </div>
+          <div class="grid">
+            <div class="card"><div class="label">Total invitados</div><div class="value">${metricas.totalInvitados}</div></div>
+            <div class="card"><div class="label">Asistidos</div><div class="value" style="color:#16a34a;">${metricas.asistidos}</div></div>
+            <div class="card"><div class="label">Faltantes</div><div class="value" style="color:#d97706;">${metricas.faltantes}</div></div>
+            <div class="card"><div class="label">Avance de aforo</div><div class="value">${metricas.porcentajeAsistencia}%</div></div>
+          </div>
+          <div class="section">
+            <div class="label" style="font-size:14px; color:#111827;">Barra de avance</div>
+            ${barraAsistencia}
+            <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:13px;">
+              <span style="color:#16a34a;">Asistidos: ${metricas.asistidos}</span>
+              <span style="color:#d97706;">Faltan: ${metricas.faltantes}</span>
+            </div>
+          </div>
+          <div class="section">
+            <div class="label" style="font-size:14px; color:#111827;">Últimos ingresos registrados</div>
+            <div class="list">
+              ${metricas.ultimosIngresos.length ? metricas.ultimosIngresos.map((p) => `
+                <div class="row">
+                  <div>
+                    <div><strong>${p.nombres_apellidos || "Sin nombre"}</strong></div>
+                    <div class="muted">${p.congregacion || "Sin congregación"}</div>
+                  </div>
+                  <div class="muted">${p.orientacion_fecha_escaneo ? new Date(p.orientacion_fecha_escaneo).toLocaleString("es-CO") : ""}</div>
+                </div>
+              `).join("") : `<div class="row"><div class="muted">Aún no hay ingresos registrados.</div></div>`}
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) throw new Error("No se pudo abrir la ventana de impresión.");
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 300);
+    } catch (err) {
+      console.error("Error generando PDF:", err);
+      setError("No fue posible generar el resumen PDF.");
+    } finally {
+      setExportandoPdf(false);
     }
   };
 
@@ -265,6 +483,154 @@ export default function ScannerOrientacion() {
           >
             <RefreshCw size={18} /> Nueva búsqueda
           </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="text-slate-600" size={18} />
+            <p className="text-sm font-semibold text-gray-500">Invitados</p>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">
+            {cargandoMetricas ? "..." : metricas.totalInvitados}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="text-green-600" size={18} />
+            <p className="text-sm font-semibold text-gray-500">Han asistido</p>
+          </div>
+          <p className="text-3xl font-bold text-green-700">
+            {cargandoMetricas ? "..." : metricas.asistidos}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertCircle className="text-amber-600" size={18} />
+            <p className="text-sm font-semibold text-gray-500">Faltan</p>
+          </div>
+          <p className="text-3xl font-bold text-amber-700">
+            {cargandoMetricas ? "..." : metricas.faltantes}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 className="text-blue-600" size={18} />
+            <p className="text-sm font-semibold text-gray-500">Avance</p>
+          </div>
+          <p className="text-3xl font-bold text-blue-700">
+            {cargandoMetricas ? "..." : `${metricas.porcentajeAsistencia}%`}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Aforo en vivo</h2>
+            <p className="text-sm text-gray-500">
+              Visual de asistentes registrados y personas pendientes por llegar.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={exportarExcelResumen}
+              disabled={exportandoExcel || cargandoMetricas}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-50"
+            >
+              <FileSpreadsheet size={18} />
+              {exportandoExcel ? "Generando Excel..." : "Exportar Excel"}
+            </button>
+            <button
+              onClick={exportarPdfResumen}
+              disabled={exportandoPdf || cargandoMetricas}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-medium disabled:opacity-50"
+            >
+              <Printer size={18} />
+              {exportandoPdf ? "Preparando PDF..." : "Resumen PDF"}
+            </button>
+          </div>
+        </div>
+
+        <div className="w-full h-6 bg-gray-200 rounded-full overflow-hidden flex">
+          <div
+            className="h-full bg-green-500 transition-all duration-500"
+            style={{ width: `${metricas.porcentajeAsistencia}%` }}
+          />
+          <div
+            className="h-full bg-amber-400 transition-all duration-500"
+            style={{ width: `${metricas.porcentajeFaltantes}%` }}
+          />
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-4 text-sm font-medium">
+          <span className="text-green-700">
+            Asistidos: {metricas.asistidos} ({metricas.porcentajeAsistencia}%)
+          </span>
+          <span className="text-amber-700">
+            Faltantes: {metricas.faltantes} ({metricas.porcentajeFaltantes}%)
+          </span>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <h3 className="font-bold text-gray-800 mb-3">Últimos ingresos</h3>
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {metricas.ultimosIngresos.length ? (
+                metricas.ultimosIngresos.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-white border border-gray-100 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">
+                        {p.nombres_apellidos}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {p.congregacion || "Sin congregación"}
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-400 whitespace-nowrap">
+                      {p.orientacion_fecha_escaneo
+                        ? new Date(p.orientacion_fecha_escaneo).toLocaleTimeString("es-CO", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : ""}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-500">Aún no hay ingresos registrados.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <h3 className="font-bold text-gray-800 mb-3">Lectura rápida</h3>
+            <div className="space-y-3">
+              <div className="rounded-xl bg-white border border-gray-100 p-3">
+                <p className="text-xs uppercase font-bold text-gray-400">
+                  Capacidad monitoreada
+                </p>
+                <p className="text-xl font-bold text-gray-900">
+                  {metricas.totalInvitados} personas
+                </p>
+              </div>
+              <div className="rounded-xl bg-white border border-gray-100 p-3">
+                <p className="text-xs uppercase font-bold text-gray-400">
+                  Estado actual
+                </p>
+                <p className="text-base font-semibold text-gray-800">
+                  Han entrado {metricas.asistidos} y faltan {metricas.faltantes}.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -436,7 +802,7 @@ export default function ScannerOrientacion() {
                       qr_token: {participante.qr_token}
                     </p>
                     <p className="text-sm text-gray-500">
-                      Último escaneo:{" "}
+                      Último escaneo: {" "}
                       {participante.orientacion_fecha_escaneo
                         ? new Date(
                             participante.orientacion_fecha_escaneo,
