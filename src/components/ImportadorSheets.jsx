@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
+
 export default function ImportadorSheets() {
   const [datosBrutos, setDatosBrutos] = useState([]);
   const [encabezados, setEncabezados] = useState([]);
@@ -27,6 +28,7 @@ export default function ImportadorSheets() {
   const [isDragging, setIsDragging] = useState(false);
   const [accesoDenegado, setAccesoDenegado] = useState(false);
   const [verificandoRol, setVerificandoRol] = useState(true);
+
 
   useEffect(() => {
     const verificarPermisos = async () => {
@@ -49,20 +51,20 @@ export default function ImportadorSheets() {
       }
 
       const rol = userData?.roles?.nombre?.toLowerCase() || "";
-      const rolesPermitidos = ['administrador', 'escritorio']
+      const rolesPermitidos = ["administrador", "escritorio"];
 
       if (!rolesPermitidos.includes(rol)) {
-        setAccesoDenegado(true)
-        setCargando(false)
-        return
+        setAccesoDenegado(true);
+        setCargando(false);
+        return;
       }
 
-      if (!rolesPermitidos.includes(rol)) setAccesoDenegado(true);
       setVerificandoRol(false);
     };
 
     verificarPermisos();
   }, []);
+
 
   const procesarArchivo = async (file) => {
     if (!file) return;
@@ -125,6 +127,52 @@ export default function ImportadorSheets() {
     return "nuevo_orientacion";
   };
 
+  // ── NUEVAS FUNCIONES DE NORMALIZACIÓN PARA EVITAR DUPLICADOS ──────────────
+
+  const normalizarTexto = (valor = "") =>
+    valor
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+
+  const normalizarTelefono = (valor = "") =>
+    (valor ?? "").toString().replace(/\D/g, "").trim();
+
+  const buscarParticipanteExistente = (existentes, { nombre, telefono, congregacion, ciudad }) => {
+    const nombreNorm       = normalizarTexto(nombre);
+    const telefonoNorm     = normalizarTelefono(telefono);
+    const congregacionNorm = normalizarTexto(congregacion);
+    const ciudadNorm       = normalizarTexto(ciudad);
+
+    // 1. Coincidencia por teléfono (más confiable)
+    if (telefonoNorm) {
+      const porTelefono = existentes.find(
+        (p) => normalizarTelefono(p.telefono) === telefonoNorm,
+      );
+      if (porTelefono) return porTelefono;
+    }
+
+    // 2. Nombre normalizado exacto (sin tildes, sin mayúsculas, sin espacios dobles)
+    const porNombre = existentes.find(
+      (p) => normalizarTexto(p.nombres_apellidos) === nombreNorm,
+    );
+    if (porNombre) return porNombre;
+
+    // 3. Nombre + (congregación o ciudad) como respaldo ante homónimos
+    return existentes.find((p) => {
+      const mismoNombre       = normalizarTexto(p.nombres_apellidos) === nombreNorm;
+      const mismaCongregacion = normalizarTexto(p.congregacion) === congregacionNorm;
+      const mismaCiudad       = normalizarTexto(p.ciudad) === ciudadNorm;
+      return mismoNombre && (mismaCongregacion || mismaCiudad);
+    }) ?? null;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+
   const handleImportar = async () => {
     if (
       !columnaNombre ||
@@ -161,11 +209,11 @@ export default function ImportadorSheets() {
     setCargando(true);
     setMensaje(null);
 
-    const indiceNombre = encabezados.indexOf(columnaNombre);
-    const indiceCiudad = encabezados.indexOf(columnaCiudad);
+    const indiceNombre      = encabezados.indexOf(columnaNombre);
+    const indiceCiudad      = encabezados.indexOf(columnaCiudad);
     const indiceCongregacion = encabezados.indexOf(columnaCongregacion);
-    const indiceTelefono = encabezados.indexOf(columnaTelefono);
-    const indicePrioridad = encabezados.indexOf(columnaPrioridad);
+    const indiceTelefono    = encabezados.indexOf(columnaTelefono);
+    const indicePrioridad   = encabezados.indexOf(columnaPrioridad);
     const indicePunto =
       tipoImportacion === "antiguos"
         ? encabezados.indexOf(columnaPuntoFijo)
@@ -215,11 +263,14 @@ export default function ImportadorSheets() {
         const puntoFijoCalculado =
           categoriaCalculada === "viejo_punto_fijo" ? puntoExcel || null : null;
 
-        const pExistente = existentes.find(
-          (p) =>
-            (p.nombres_apellidos || "").toLowerCase() ===
-            nombreExcel.toLowerCase(),
-        );
+        // ── REEMPLAZA el find anterior por la búsqueda robusta ───────────────
+        const pExistente = buscarParticipanteExistente(existentes, {
+          nombre:       nombreExcel,
+          telefono:     telefonoExcel,
+          congregacion: congregacionExcel,
+          ciudad:       ciudadExcel,
+        });
+        // ─────────────────────────────────────────────────────────────────────
 
         if (pExistente) {
           const requiereActualizar =
@@ -310,6 +361,7 @@ export default function ImportadorSheets() {
 
     setCargando(false);
   };
+
 
   if (verificandoRol) {
     return (
